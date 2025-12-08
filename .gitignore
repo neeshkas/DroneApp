@@ -1,0 +1,54 @@
+# Flutter / Dart
+**/build/
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/pubspec.lock
+**/.metadata
+
+# IDE
+.vscode/
+**/.idea/
+**/*.iml
+
+# Android/Gradle
+**/.gradle/
+**/local.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+
+# iOS/Xcode
+**/ios/Flutter/Flutter.podspec
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.*
+**/macos/Pods/
+
+# Web
+**/web/.dart_tool/
+
+# Linux/Windows/macOS build
+**/CMakeFiles/
+**/cmake-build-*/
+**/Makefile
+**/CMakeCache.txt
+
+# Python
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+venv/
+.venv/
+
+# OS junk
+.DS_Store
+Thumbs.db
