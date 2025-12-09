@@ -82,11 +82,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               Text('Точка доставки: ${appState.deliveryAddress}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade700)),
               const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Нажмите на карту выше, чтобы выбрать точку доставки, или введите адрес',
+                        style: TextStyle(fontSize: 12, color: Colors.blue.shade900),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
               TextField(
                 controller: _addressCtrl,
                 decoration: InputDecoration(
-                  labelText: 'Адрес вручную',
+                  labelText: 'Поиск адреса',
                   hintText: 'Например: Алматы, Абая 50',
+                  prefixIcon: const Icon(Icons.location_on_outlined),
                   suffixIcon: IconButton(
                     icon: _isSearching
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
@@ -94,32 +116,93 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     onPressed: _isSearching
                         ? null
                         : () async {
+                            if (_addressCtrl.text.trim().isEmpty) return;
                             setState(() => _isSearching = true);
                             final ok = await context.read<AppState>().setDeliveryByQuery(_addressCtrl.text);
                             setState(() => _isSearching = false);
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(ok ? 'Точка обновлена' : 'Не удалось найти адрес')),
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    Icon(ok ? Icons.check_circle : Icons.error, color: Colors.white),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(ok
+                                        ? 'Адрес найден! Точка обновлена на карте'
+                                        : 'Не удалось найти адрес. Попробуйте выбрать точку на карте'),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: ok ? Colors.green.shade600 : Colors.orange.shade700,
+                                duration: const Duration(seconds: 3),
+                              ),
                             );
                           },
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 textInputAction: TextInputAction.search,
                 onSubmitted: (_) async {
-                  if (_isSearching) return;
+                  if (_isSearching || _addressCtrl.text.trim().isEmpty) return;
                   setState(() => _isSearching = true);
                   final ok = await context.read<AppState>().setDeliveryByQuery(_addressCtrl.text);
                   setState(() => _isSearching = false);
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(ok ? 'Точка обновлена' : 'Не удалось найти адрес')),
+                    SnackBar(
+                      content: Row(
+                        children: [
+                          Icon(ok ? Icons.check_circle : Icons.error, color: Colors.white),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(ok
+                              ? 'Адрес найден! Точка обновлена на карте'
+                              : 'Не удалось найти адрес. Попробуйте выбрать точку на карте'),
+                          ),
+                        ],
+                      ),
+                      backgroundColor: ok ? Colors.green.shade600 : Colors.orange.shade700,
+                      duration: const Duration(seconds: 3),
+                    ),
                   );
                 },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               if (store != null)
-                Text('Магазин: ${store.name}\nАдрес: ${store.address}',
-                    style: Theme.of(context).textTheme.bodySmall),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.store, size: 20),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(store.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                            const SizedBox(height: 2),
+                            Text(store.address, style: Theme.of(context).textTheme.bodySmall),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               if (appState.isOverweight)
                 Padding(
                   padding: const EdgeInsets.only(top: 8),
@@ -136,14 +219,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom + 12),
                 child: SizedBox(
                   width: double.infinity,
-                  child: FilledButton(
+                  child: AnimatedPayButton(
                     onPressed: canPay
                         ? () {
                             context.read<AppState>().payAndLaunch(useBackendTracking: true);
                             widget.onStartTracking();
                           }
                         : null,
-                    child: const Text('Оплатить Apple Pay'),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.apple, size: 20),
+                        const SizedBox(width: 8),
+                        const Text('Оплатить Apple Pay'),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -218,6 +308,68 @@ class _PinMarker extends StatelessWidget {
         child: Text(
           label,
           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+}
+
+class AnimatedPayButton extends StatefulWidget {
+  final VoidCallback? onPressed;
+  final Widget child;
+
+  const AnimatedPayButton({super.key, required this.onPressed, required this.child});
+
+  @override
+  State<AnimatedPayButton> createState() => _AnimatedPayButtonState();
+}
+
+class _AnimatedPayButtonState extends State<AnimatedPayButton> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  bool _isHovered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.98).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: FilledButton(
+          onPressed: widget.onPressed == null
+              ? null
+              : () {
+                  _controller.forward().then((_) => _controller.reverse());
+                  widget.onPressed!();
+                },
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            backgroundColor: _isHovered && widget.onPressed != null ? Colors.black : null,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+            ),
+            elevation: _isHovered ? 4 : 0,
+          ),
+          child: widget.child,
         ),
       ),
     );

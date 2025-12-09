@@ -328,15 +328,29 @@ class AppState extends ChangeNotifier {
   List<Product> get _fallbackProducts {
     final stores = _fallbackStores;
     final List<Product> result = [];
+    final imageUrls = [
+      'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=400&q=80',
+      'https://images.unsplash.com/photo-1523275335684-37898b6baf30?auto=format&fit=crop&w=400&q=80',
+      'https://images.unsplash.com/photo-1572635196237-14b3f281503f?auto=format&fit=crop&w=400&q=80',
+      'https://images.unsplash.com/photo-1560343090-f0409e92791a?auto=format&fit=crop&w=400&q=80',
+      'https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=400&q=80',
+    ];
+    final titles = [
+      'Беспроводные наушники Pro',
+      'Умные часы Sport',
+      'Портативная колонка',
+      'Солнцезащитные очки',
+      'Кроссовки Premium',
+    ];
     for (final store in stores) {
       for (int i = 0; i < 5; i++) {
         result.add(Product(
           id: '${store.id}_p${i + 1}',
           storeId: store.id,
-          title: 'Товар ${i + 1} · ${store.name}',
+          title: '${titles[i]} · ${store.name}',
           price: 1500 + (i * 150),
           weight: 200 + i * 30,
-          imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=60',
+          imageUrl: imageUrls[i],
         ));
       }
     }

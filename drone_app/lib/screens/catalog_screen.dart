@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/product.dart';
 import '../models/store.dart';
 import '../state/app_state.dart';
+import '../widgets/animated_button.dart';
 
 class CatalogScreen extends StatelessWidget {
   final VoidCallback onOpenCart;
@@ -101,15 +102,24 @@ class _StoreSection extends StatelessWidget {
                 Text(store.address, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade700)),
               ],
             ),
-            FilledButton.tonal(
+            AnimatedButton(
               onPressed: onSelectStore,
-              child: Text(isSelected ? 'Выбрано' : 'Выбрать'),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isSelected) ...[
+                    const Icon(Icons.check_circle, size: 16),
+                    const SizedBox(width: 4),
+                  ],
+                  Text(isSelected ? 'Выбрано' : 'Выбрать'),
+                ],
+              ),
             ),
           ],
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 270,
+          height: 290,
           child: products.isEmpty
               ? const Center(child: Text('Товары загружаются...'))
               : ListView.separated(
@@ -134,7 +144,7 @@ class _StoreSection extends StatelessWidget {
   }
 }
 
-class _ProductCard extends StatelessWidget {
+class _ProductCard extends StatefulWidget {
   final String title;
   final double price;
   final double weight;
@@ -152,59 +162,166 @@ class _ProductCard extends StatelessWidget {
   });
 
   @override
+  State<_ProductCard> createState() => _ProductCardState();
+}
+
+class _ProductCardState extends State<_ProductCard> with SingleTickerProviderStateMixin {
+  bool _isHovered = false;
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 1.03).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.grey.shade200),
-        boxShadow: const [
-          BoxShadow(color: Color(0x11000000), blurRadius: 10, offset: Offset(0, 5)),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            height: 140,
-            child: ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-              child: Image.network(
-                imageUrl,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (context, _, __) => Container(
-                  color: Colors.grey.shade200,
-                  child: const Center(child: Icon(Icons.image_not_supported_outlined)),
+    return MouseRegion(
+      onEnter: (_) {
+        setState(() => _isHovered = true);
+        _controller.forward();
+      },
+      onExit: (_) {
+        setState(() => _isHovered = false);
+        _controller.reverse();
+      },
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Container(
+          width: widget.width,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Colors.white, Colors.grey.shade50],
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _isHovered ? Colors.blue.shade200 : Colors.grey.shade200,
+              width: _isHovered ? 2 : 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: _isHovered ? const Color(0x22000000) : const Color(0x11000000),
+                blurRadius: _isHovered ? 15 : 10,
+                offset: Offset(0, _isHovered ? 8 : 5),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                height: 140,
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                  child: Stack(
+                    children: [
+                      Image.network(
+                        widget.imageUrl,
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, _, __) => Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.blue.shade100, Colors.purple.shade100],
+                            ),
+                          ),
+                          child: Center(
+                            child: Icon(Icons.shopping_bag, size: 48, color: Colors.white.withOpacity(0.8)),
+                          ),
+                        ),
+                      ),
+                      if (_isHovered)
+                        Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.1),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(10, 10, 10, 2),
-            child: Text(title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, fontSize: 16)),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: Text('₸${price.toStringAsFixed(0)} · ${(weight / 1000).toStringAsFixed(1)} кг',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade700)),
-          ),
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: onAdd,
-                child: const Text('В корзину'),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+                child: Text(
+                  widget.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                        height: 1.2,
+                      ),
+                ),
               ),
-            ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    Text(
+                      '₸${widget.price.toStringAsFixed(0)}',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue.shade700,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${(widget.weight / 1000).toStringAsFixed(1)} кг',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: AnimatedButton(
+                    onPressed: widget.onAdd,
+                    child: const Text('В корзину'),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
