@@ -18,7 +18,7 @@ class LocalDb {
   LocalDb._();
 
   Future<void> init() async {
-    if (kIsWeb) return; // sqflite не работает в вебе
+    if (kIsWeb) return; // sqflite not supported on web
     final dir = await getApplicationDocumentsDirectory();
     final path = p.join(dir.path, _dbName);
     _db = await openDatabase(
@@ -111,15 +111,14 @@ class LocalDb {
         .toList();
   }
 
-  // Статичные данные на случай веба и для первичного наполнения
   List<Store> get _sampleStores {
     return List.generate(10, (i) {
       final baseLat = 43.235 + i * 0.002;
       final baseLng = 76.88 + i * 0.003;
       return Store(
         id: 's${i + 1}',
-        name: 'Магазин ${i + 1}',
-        address: 'Алматы, проспект Абая ${(50 + i)}',
+        name: 'AeroMart ${i + 1}',
+        address: 'Kaskelen Ave ${(50 + i)}',
         latitude: baseLat,
         longitude: baseLng,
       );
@@ -128,16 +127,28 @@ class LocalDb {
 
   List<Product> get _sampleProducts {
     final stores = _sampleStores;
+    const imageUrls = [
+      "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1543362906-acfc16c67564?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1481931098730-318b6f776db0?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1506807803488-8eafc15316c0?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1505252585461-04db1eb84625?auto=format&fit=crop&w=800&q=60",
+      "https://images.unsplash.com/photo-1526318472351-c75fcf070305?auto=format&fit=crop&w=800&q=60",
+    ];
     final List<Product> result = [];
     for (final store in stores) {
       for (int i = 0; i < 10; i++) {
         result.add(Product(
           id: '${store.id}_p${i + 1}',
           storeId: store.id,
-          title: 'Товар ${i + 1} · ${store.name}',
+          title: 'Essentials Pack ${i + 1} - ${store.name}',
           price: 1500 + (i * 150),
           weight: 200 + i * 30,
-          imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=60',
+          imageUrl: imageUrls[i % imageUrls.length],
         ));
       }
     }

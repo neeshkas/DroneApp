@@ -4,40 +4,33 @@ from pathlib import Path
 
 DB_PATH = Path(__file__).parent / "drone.db"
 
-STORE_NAMES = [
-    "Магазин Центр",
-    "Магазин Восток",
-    "Магазин Запад",
-    "Магазин Север",
-    "Магазин Юг",
-    "Маркет А",
-    "Маркет B",
-    "Маркет C",
-    "Маркет D",
-    "Маркет E",
-    "ДронМаркет 1",
-    "ДронМаркет 2",
-]
+STORE_NAMES = [f"AeroMart {i}" for i in range(1, 13)]
 
 PRODUCT_TITLES = [
-    "Кофе зерновой",
-    "Чай зелёный",
-    "Батончик энергетический",
-    "Шоколад",
-    "Сок апельсиновый",
-    "Вода негаз",
-    "Вода газ",
-    "Орехи микс",
-    "Чипсы",
-    "Печенье овсяное",
-    "Творожок",
-    "Йогурт",
-    "Сэндвич",
-    "Салат",
-    "Суп готовый",
+    "Fresh Bites",
+    "Quick Energy",
+    "Hydration Pack",
+    "Everyday Essentials",
+    "Healthy Greens",
+    "Smart Snacks",
+    "Coffee Boost",
+    "Meal Ready Kit",
+    "Wellness Box",
+    "Urban Pantry",
 ]
 
-IMAGE_URL = "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=60"
+IMAGE_URLS = [
+    "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1543362906-acfc16c67564?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1498837167922-ddd27525d352?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1481931098730-318b6f776db0?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1506807803488-8eafc15316c0?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1505252585461-04db1eb84625?auto=format&fit=crop&w=800&q=60",
+    "https://images.unsplash.com/photo-1526318472351-c75fcf070305?auto=format&fit=crop&w=800&q=60",
+]
 
 
 def get_conn() -> sqlite3.Connection:
@@ -90,13 +83,14 @@ def generate_data():
         lat = base_lat + idx * 0.0025
         lng = base_lng + idx * 0.0035
         sid = f"s{idx:02d}"
-        stores.append((sid, name, f"Алматы, ул. Абая {40 + idx}", lat, lng))
+        stores.append((sid, name, f"Kaskelen Ave {40 + idx}", lat, lng))
 
         for p_idx, title in enumerate(PRODUCT_TITLES, start=1):
             pid = f"{sid}_p{p_idx:02d}"
             price = 1200 + 150 * p_idx + random.randint(-50, 80)
             weight = 150 + 25 * p_idx + random.randint(-10, 40)
-            products.append((pid, sid, f"{title} · {name}", price, weight, IMAGE_URL))
+            image_url = IMAGE_URLS[p_idx % len(IMAGE_URLS)]
+            products.append((pid, sid, f"{title} - {name}", price, weight, image_url))
 
     return stores, products
 

@@ -14,4 +14,15 @@ class Product {
     required this.weight,
     required this.imageUrl,
   });
+
+  factory Product.fromJson(Map<String, dynamic> json) {
+    return Product(
+      id: json['id'],
+      storeId: json['storeId'],
+      title: json['title'],
+      price: json['price'],
+      weight: json['weight'],
+      imageUrl: json['imageUrl'],
+    );
+  }
 }

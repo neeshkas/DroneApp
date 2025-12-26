@@ -11,6 +11,8 @@
 .vscode/
 **/.idea/
 **/*.iml
+**/.claude/
+**/nul
 
 # Android/Gradle
 **/.gradle/

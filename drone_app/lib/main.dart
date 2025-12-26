@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
-import 'screens/cart_screen.dart';
 import 'screens/catalog_screen.dart';
-import 'screens/checkout_screen.dart';
-import 'screens/tracking_screen.dart';
 import 'state/app_state.dart';
 
 void main() {
@@ -16,63 +14,91 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseColor = Colors.black;
+    // Sales-focused, clean light theme
+    const ink = Color(0xFF0F172A);
+    const ocean = Color(0xFF0B3C49);
+    const sun = Color(0xFFFF6B35);
+    const sand = Color(0xFFF6F2EC);
+    const surface = Color(0xFFFFFFFF);
+    const outline = Color(0xFFE5DDD2);
+
     return ChangeNotifierProvider(
       create: (_) => AppState()..init(),
       child: MaterialApp(
-        title: 'DroneDelivery',
+        title: 'Drone Delivery',
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(seedColor: baseColor, brightness: Brightness.light),
-          scaffoldBackgroundColor: Colors.white,
-          appBarTheme: const AppBarTheme(backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 0),
-          filledButtonTheme: FilledButtonThemeData(
-            style: FilledButton.styleFrom(
-              backgroundColor: baseColor,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
+          colorScheme: const ColorScheme.light(
+            primary: ocean,
+            secondary: sun,
+            background: sand,
+            surface: surface,
+            onPrimary: sand,
+            onSecondary: ink,
+            onBackground: ink,
+            onSurface: ink,
+            brightness: Brightness.light,
+          ),
+          scaffoldBackgroundColor: sand,
+          textTheme: GoogleFonts.soraTextTheme(
+            Theme.of(context).textTheme.apply(
+                  displayColor: ink,
+                  bodyColor: ink.withOpacity(0.8),
+                ),
+          ),
+          appBarTheme: AppBarTheme(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            centerTitle: false,
+            titleTextStyle: GoogleFonts.sora(
+              fontSize: 20,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+              color: ink,
             ),
           ),
+          cardTheme: CardThemeData(
+            color: surface,
+            elevation: 1.5,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: const BorderSide(color: outline, width: 1),
+            ),
+            shadowColor: Colors.black.withOpacity(0.06),
+          ),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              backgroundColor: ocean,
+              foregroundColor: sand,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+              textStyle: GoogleFonts.sora(
+                fontWeight: FontWeight.w800,
+                fontSize: 16,
+                letterSpacing: 0.2,
+              ),
+            ),
+          ),
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: outline),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: outline),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: ocean, width: 1.5),
+            ),
+            hintStyle: TextStyle(color: ink.withOpacity(0.4)),
+            prefixIconColor: ink.withOpacity(0.5),
+          ),
         ),
-        home: const _HomeShell(),
-      ),
-    );
-  }
-}
-
-class _HomeShell extends StatefulWidget {
-  const _HomeShell();
-
-  @override
-  State<_HomeShell> createState() => _HomeShellState();
-}
-
-class _HomeShellState extends State<_HomeShell> {
-  int index = 0;
-
-  void _goTo(int newIndex) => setState(() => index = newIndex);
-
-  @override
-  Widget build(BuildContext context) {
-    final screens = [
-      CatalogScreen(onOpenCart: () => _goTo(1)),
-      CartScreen(onOpenCheckout: () => _goTo(2)),
-      CheckoutScreen(onStartTracking: () => _goTo(3)),
-      const TrackingScreen(),
-    ];
-
-    return Scaffold(
-      body: screens[index],
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: index,
-        onDestinationSelected: _goTo,
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.grid_view_outlined), label: 'Каталог'),
-          NavigationDestination(icon: Icon(Icons.shopping_bag_outlined), label: 'Корзина'),
-          NavigationDestination(icon: Icon(Icons.receipt_long_outlined), label: 'Оформление'),
-          NavigationDestination(icon: Icon(Icons.map_outlined), label: 'Трекинг'),
-        ],
+        home: const CatalogScreen(),
       ),
     );
   }
