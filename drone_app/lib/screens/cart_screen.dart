@@ -107,7 +107,7 @@ class _CartScreenState extends State<CartScreen> {
                         child: _MapCard(
                           store: appState.selectedStore,
                           delivery: appState.deliveryPoint,
-                          onPick: (p) => context.read<AppState>().setDeliveryPoint(p),
+                          onPick: (p) => context.read<AppState>().setDeliveryPointFromMap(p),
                         ),
                       ),
                     ),

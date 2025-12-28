@@ -235,7 +235,6 @@ class _QuickActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
@@ -450,7 +449,7 @@ class _StoreSection extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           SizedBox(
-            height: 260,
+            height: 280,
             child: products.isEmpty
                 ? Center(
                     child: Text('No items yet. Check back soon.', style: theme.textTheme.bodySmall),
@@ -529,7 +528,7 @@ class _ProductCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              height: 140,
+              height: 130,
               width: double.infinity,
               child: Stack(
                 children: [
@@ -610,14 +609,57 @@ class _ProductCard extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               child: SizedBox(
                 width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: onAdd,
-                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
-                  label: const Text('Quick add'),
-                ),
+                child: _QuickAddButton(onAdd: onAdd),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickAddButton extends StatefulWidget {
+  final VoidCallback onAdd;
+
+  const _QuickAddButton({required this.onAdd});
+
+  @override
+  State<_QuickAddButton> createState() => _QuickAddButtonState();
+}
+
+class _QuickAddButtonState extends State<_QuickAddButton> {
+  bool _pressed = false;
+
+  void _handleTap() {
+    setState(() => _pressed = true);
+    widget.onAdd();
+    Future.delayed(const Duration(milliseconds: 600), () {
+      if (mounted) setState(() => _pressed = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AnimatedScale(
+      scale: _pressed ? 0.96 : 1,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOut,
+      child: FilledButton.icon(
+        onPressed: _handleTap,
+        style: FilledButton.styleFrom(
+          backgroundColor: _pressed ? theme.colorScheme.secondary : theme.colorScheme.primary,
+        ),
+        icon: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: _pressed
+              ? const Icon(Icons.check_circle_rounded, size: 18, key: ValueKey('check'))
+              : const Icon(Icons.add_shopping_cart_rounded, size: 18, key: ValueKey('cart')),
+        ),
+        label: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: Text(_pressed ? 'Added' : 'Quick add', key: ValueKey(_pressed)),
         ),
       ),
     );

@@ -32,7 +32,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final store = appState.selectedStore;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Оформление')),
+      appBar: AppBar(title: const Text('Checkout')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -42,21 +42,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               _MapCard(
                 store: store,
                 delivery: appState.deliveryPoint,
-                onPick: (p) => context.read<AppState>().setDeliveryPoint(p),
+                onPick: (p) => context.read<AppState>().setDeliveryPointFromMap(p),
               ),
               const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('Способ доставки', style: Theme.of(context).textTheme.titleMedium),
+                  Text('Delivery preferences', style: Theme.of(context).textTheme.titleMedium),
                   Row(
                     children: [
-                      const Text('Киоск'),
+                      const Text('Kiosk'),
                       Switch(
                         value: !deliverToKiosk,
                         onChanged: (v) => setState(() => deliverToKiosk = !deliverToKiosk),
                       ),
-                      const Text('Лебёдка'),
+                      const Text('To door'),
                     ],
                   ),
                 ],
@@ -65,8 +65,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Итого'),
-                  Text('₸${appState.totalPrice.toStringAsFixed(0)}',
+                  const Text('Subtotal'),
+                  Text('KZT ${appState.totalPrice.toStringAsFixed(0)}',
                       style: Theme.of(context).textTheme.titleLarge),
                 ],
               ),
@@ -74,19 +74,19 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Вес'),
-                  Text('${appState.totalWeight.toStringAsFixed(0)} г'),
+                  const Text('Weight'),
+                  Text('${appState.totalWeight.toStringAsFixed(0)} g'),
                 ],
               ),
               const SizedBox(height: 4),
-              Text('Точка доставки: ${appState.deliveryAddress}',
+              Text('Delivery address: ${appState.deliveryAddress}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.grey.shade700)),
               const SizedBox(height: 12),
               TextField(
                 controller: _addressCtrl,
                 decoration: InputDecoration(
-                  labelText: 'Адрес вручную',
-                  hintText: 'Например: Алматы, Абая 50',
+                  labelText: 'Search address',
+                  hintText: 'Street, building, or landmark',
                   suffixIcon: IconButton(
                     icon: _isSearching
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
@@ -99,7 +99,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             setState(() => _isSearching = false);
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text(ok ? 'Точка обновлена' : 'Не удалось найти адрес')),
+                              SnackBar(content: Text(ok ? 'Delivery point updated.' : 'Unable to find that location.')),
                             );
                           },
                   ),
@@ -112,13 +112,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   setState(() => _isSearching = false);
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(ok ? 'Точка обновлена' : 'Не удалось найти адрес')),
+                    SnackBar(content: Text(ok ? 'Delivery point updated.' : 'Unable to find that location.')),
                   );
                 },
               ),
               const SizedBox(height: 8),
               if (store != null)
-                Text('Магазин: ${store.name}\nАдрес: ${store.address}',
+                Text('Selected store: ${store.name}\nAddress: ${store.address}',
                     style: Theme.of(context).textTheme.bodySmall),
               if (appState.isOverweight)
                 Padding(
@@ -127,7 +127,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     children: [
                       Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700),
                       const SizedBox(width: 6),
-                      const Text('Перегруз > 3 кг'),
+                      const Text('Payload is over 3 kg'),
                     ],
                   ),
                 ),
@@ -143,7 +143,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             widget.onStartTracking();
                           }
                         : null,
-                    child: const Text('Оплатить Apple Pay'),
+                    child: const Text('Pay and launch'),
                   ),
                 ),
               ),
@@ -213,7 +213,11 @@ class _PinMarker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: color, shape: BoxShape.circle, boxShadow: const [BoxShadow(color: Color(0x22000000), blurRadius: 6, offset: Offset(0, 3))]),
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: const [BoxShadow(color: Color(0x22000000), blurRadius: 6, offset: Offset(0, 3))],
+      ),
       child: Center(
         child: Text(
           label,
