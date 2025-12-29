@@ -324,7 +324,7 @@ async def simulate_flight(
     Simulate drone flight by sending coordinates every 5 seconds.
     Total flight time is 60 seconds.
     """
-    flight_duration = 60.0
+    flight_duration = 30.0
     update_interval = 5.0
     start_time = time.time()
 

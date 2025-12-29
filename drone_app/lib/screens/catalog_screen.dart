@@ -19,7 +19,7 @@ class CatalogScreen extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SkyDrop'),
+        title: const Text('AAAG delievery'),
         actions: [
           IconButton(
             onPressed: () {
