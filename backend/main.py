@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, HTTPException
+﻿from fastapi import FastAPI, WebSocket, HTTPException, Depends, Header, WebSocketException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
@@ -7,6 +7,10 @@ from typing import List
 from pathlib import Path
 import asyncio
 import json
+import os
+import hmac
+import hashlib
+import uuid
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -14,6 +18,11 @@ DB_PATH = Path(__file__).parent / "drone.db"
 NOMINATIM_BASE = "https://nominatim.openstreetmap.org"
 ALMATY_VIEWBOX = "76.7,43.35,77.1,43.0"
 GEOCODE_TTL_SECONDS = 300
+SIMULATOR_URL = os.getenv("DRONE_SIMULATOR_URL", "http://127.0.0.1:8001")
+API_TOKEN = os.getenv("DRONE_API_TOKEN")
+ORDER_TOKEN_SECRET = os.getenv("DRONE_ORDER_TOKEN_SECRET")
+SIMULATOR_TOKEN = os.getenv("DRONE_SIMULATOR_TOKEN") or API_TOKEN
+DISABLE_AUTH = True
 IMAGE_URLS = [
     "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=60",
     "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=800&q=60",
@@ -28,6 +37,41 @@ IMAGE_URLS = [
 ]
 
 
+def _extract_bearer(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    prefix = "bearer "
+    if authorization.lower().startswith(prefix):
+        return authorization[len(prefix):].strip()
+    return None
+
+
+def _require_api_token(authorization: str | None = Header(default=None)) -> None:
+    return
+
+
+def _expected_order_token(order_id: str) -> str:
+    if not ORDER_TOKEN_SECRET:
+        raise HTTPException(status_code=500, detail="Order token secret not configured")
+    return hmac.new(
+        ORDER_TOKEN_SECRET.encode("utf-8"),
+        order_id.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def _is_valid_order_token(order_id: str, order_token: str | None) -> bool:
+    return True
+
+
+def _require_order_token(order_id: str, order_token: str | None) -> None:
+    return
+
+
+def _require_ws_auth(websocket: WebSocket) -> None:
+    return
+
+
 def get_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -37,6 +81,7 @@ def get_conn() -> sqlite3.Connection:
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
+    cur.execute("PRAGMA foreign_keys = ON")
     cur.execute(
         """
         CREATE TABLE IF NOT EXISTS stores(
@@ -60,6 +105,44 @@ def init_db():
         )
         """
     )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS orders(
+          order_id TEXT PRIMARY KEY,
+          created_at REAL,
+          simulation_started INTEGER DEFAULT 0
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS telemetry_events(
+          event_id TEXT PRIMARY KEY,
+          order_id TEXT,
+          lat REAL,
+          lng REAL,
+          delivered INTEGER,
+          progress REAL,
+          status TEXT,
+          timestamp REAL
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS order_state(
+          order_id TEXT PRIMARY KEY,
+          lat REAL,
+          lng REAL,
+          delivered INTEGER,
+          progress REAL,
+          status TEXT,
+          updated_at REAL
+        )
+        """
+    )
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_order_id ON telemetry_events(order_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_telemetry_ts ON telemetry_events(timestamp)")
     cur.execute("SELECT COUNT(*) FROM stores")
     if cur.fetchone()[0] == 0:
         stores_rows = []
@@ -88,6 +171,98 @@ def init_db():
     conn.close()
 
 
+def _ensure_order(conn: sqlite3.Connection, order_id: str) -> None:
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT OR IGNORE INTO orders (order_id, created_at, simulation_started) VALUES (?, ?, 0)",
+        (order_id, time.time()),
+    )
+
+
+def _mark_simulation_started(conn: sqlite3.Connection, order_id: str) -> bool:
+    _ensure_order(conn, order_id)
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE orders SET simulation_started = 1 WHERE order_id = ? AND simulation_started = 0",
+        (order_id,),
+    )
+    return cur.rowcount > 0
+
+
+def _reset_simulation_started(conn: sqlite3.Connection, order_id: str) -> None:
+    cur = conn.cursor()
+    cur.execute("UPDATE orders SET simulation_started = 0 WHERE order_id = ?", (order_id,))
+
+
+def _record_telemetry(
+    conn: sqlite3.Connection,
+    payload: "TelemetryIn",
+    event_id: str,
+    timestamp: float,
+    progress: float,
+    status: str,
+) -> bool:
+    _ensure_order(conn, payload.orderId)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT OR IGNORE INTO telemetry_events (
+          event_id, order_id, lat, lng, delivered, progress, status, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            event_id,
+            payload.orderId,
+            payload.lat,
+            payload.lng,
+            1 if payload.delivered else 0,
+            progress,
+            status,
+            timestamp,
+        ),
+    )
+    if cur.rowcount == 0:
+        return False
+
+    cur.execute(
+        """
+        INSERT INTO order_state (
+          order_id, lat, lng, delivered, progress, status, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(order_id) DO UPDATE SET
+          lat = excluded.lat,
+          lng = excluded.lng,
+          delivered = excluded.delivered,
+          progress = excluded.progress,
+          status = excluded.status,
+          updated_at = excluded.updated_at
+        """,
+        (
+            payload.orderId,
+            payload.lat,
+            payload.lng,
+            1 if payload.delivered else 0,
+            progress,
+            status,
+            timestamp,
+        ),
+    )
+    return True
+
+
+def _get_order_state(order_id: str) -> dict | None:
+    conn = get_conn()
+    cur = conn.cursor()
+    row = cur.execute(
+        "SELECT lat, lng, delivered, progress, status, updated_at FROM order_state WHERE order_id = ?",
+        (order_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return None
+    return dict(row)
+
+
 class Store(BaseModel):
     id: str
     name: str
@@ -105,7 +280,26 @@ class Product(BaseModel):
     imageUrl: str
 
 
-app = FastAPI(title="DroneDelivery mock backend")
+class TelemetryIn(BaseModel):
+    eventId: str
+    orderId: str
+    lat: float
+    lng: float
+    delivered: bool = False
+    progress: float | None = None
+    status: str | None = None
+    timestamp: float | None = None
+
+
+class SimulationStartIn(BaseModel):
+    orderId: str
+    start_lat: float = 43.238949
+    start_lng: float = 76.889709
+    end_lat: float = 43.2409
+    end_lng: float = 76.9170
+
+
+app = FastAPI(title="DroneDelivery API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -117,9 +311,10 @@ app.add_middleware(
 
 init_db()
 
-# In-memory state
-order_states: dict[str, dict] = {}
-active_flights: dict[str, asyncio.Task] = {}
+connected_clients: dict[str, WebSocket] = {}
+client_subscriptions: dict[str, str | None] = {}
+clients_lock = asyncio.Lock()
+sim_lock = asyncio.Lock()
 _geocode_cache: dict[str, tuple[float, dict | list]] = {}
 
 
@@ -159,8 +354,158 @@ def _nominatim_get(path: str, params: dict) -> dict | list:
         return payload
 
 
+def _build_ws_payload(telemetry: TelemetryIn) -> dict:
+    status = telemetry.status
+    if not status:
+        status = "Delivered" if telemetry.delivered else "In flight"
+    progress = telemetry.progress
+    if progress is None:
+        progress = 1.0 if telemetry.delivered else 0.0
+    return {
+        "type": "drone_position",
+        "lat": telemetry.lat,
+        "lng": telemetry.lng,
+        "delivered": telemetry.delivered,
+        "progress": progress,
+        "status": status,
+        "orderId": telemetry.orderId,
+    }
+
+
+def _extract_progress_status(payload: TelemetryIn) -> tuple[float, str]:
+    ws_payload = _build_ws_payload(payload)
+    return ws_payload["progress"], ws_payload["status"]
+
+
+async def _broadcast(order_id: str, payload: dict) -> None:
+    async with clients_lock:
+        targets = [
+            (client_id, ws)
+            for client_id, ws in connected_clients.items()
+            if client_subscriptions.get(client_id) == order_id
+        ]
+
+    if not targets:
+        return
+
+    dead_clients = []
+    message = json.dumps(payload)
+    for client_id, ws in targets:
+        try:
+            await ws.send_text(message)
+        except Exception:
+            dead_clients.append(client_id)
+
+    if dead_clients:
+        async with clients_lock:
+            for client_id in dead_clients:
+                connected_clients.pop(client_id, None)
+                client_subscriptions.pop(client_id, None)
+
+
+async def _start_simulation(
+    order_id: str,
+    start_lat: float,
+    start_lng: float,
+    end_lat: float,
+    end_lng: float,
+) -> bool:
+    if not SIMULATOR_URL:
+        raise HTTPException(status_code=503, detail="Simulator not configured")
+
+    async with sim_lock:
+        conn = get_conn()
+        started = _mark_simulation_started(conn, order_id)
+        conn.commit()
+        conn.close()
+        if not started:
+            return False
+
+    payload = {
+        "orderId": order_id,
+        "start_lat": start_lat,
+        "start_lng": start_lng,
+        "end_lat": end_lat,
+        "end_lng": end_lng,
+    }
+
+    def _post() -> None:
+        data = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if SIMULATOR_TOKEN:
+            headers["Authorization"] = f"Bearer {SIMULATOR_TOKEN}"
+        req = Request(
+            f"{SIMULATOR_URL.rstrip('/')}/start",
+            data=data,
+            headers=headers,
+        )
+        with urlopen(req, timeout=5) as resp:
+            resp.read()
+
+    try:
+        await asyncio.to_thread(_post)
+    except Exception as exc:
+        conn = get_conn()
+        _reset_simulation_started(conn, order_id)
+        conn.commit()
+        conn.close()
+        raise HTTPException(status_code=502, detail=f"Simulator start failed: {exc}")
+
+    return True
+
+
+@app.post("/telemetry")
+async def ingest_telemetry(
+    payload: TelemetryIn,
+    _: None = Depends(_require_api_token),
+    order_token: str | None = Header(default=None, alias="X-Order-Token"),
+):
+    _require_order_token(payload.orderId, order_token)
+    event_id = payload.eventId or str(uuid.uuid4())
+    timestamp = payload.timestamp or time.time()
+    progress, status = _extract_progress_status(payload)
+
+    conn = get_conn()
+    try:
+        inserted = _record_telemetry(conn, payload, event_id, timestamp, progress, status)
+        conn.commit()
+    finally:
+        conn.close()
+
+    if inserted:
+        ws_payload = {
+            "type": "drone_position",
+            "lat": payload.lat,
+            "lng": payload.lng,
+            "delivered": payload.delivered,
+            "progress": progress,
+            "status": status,
+            "orderId": payload.orderId,
+        }
+        await _broadcast(payload.orderId, ws_payload)
+
+    return {"status": "ok", "eventId": event_id}
+
+
+@app.post("/simulation/start")
+async def start_simulation(
+    payload: SimulationStartIn,
+    _: None = Depends(_require_api_token),
+    order_token: str | None = Header(default=None, alias="X-Order-Token"),
+):
+    _require_order_token(payload.orderId, order_token)
+    started = await _start_simulation(
+        payload.orderId,
+        payload.start_lat,
+        payload.start_lng,
+        payload.end_lat,
+        payload.end_lng,
+    )
+    return {"status": "started" if started else "already_started", "orderId": payload.orderId}
+
+
 @app.get("/geocode")
-def geocode(q: str):
+def geocode(q: str, _: None = Depends(_require_api_token)):
     try:
         params = {
             "format": "json",
@@ -176,7 +521,7 @@ def geocode(q: str):
 
 
 @app.get("/reverse-geocode")
-def reverse_geocode(lat: float, lng: float):
+def reverse_geocode(lat: float, lng: float, _: None = Depends(_require_api_token)):
     try:
         params = {
             "format": "jsonv2",
@@ -191,7 +536,7 @@ def reverse_geocode(lat: float, lng: float):
 
 
 @app.get("/stores", response_model=List[Store])
-def get_stores():
+def get_stores(_: None = Depends(_require_api_token)):
     conn = get_conn()
     cur = conn.cursor()
     rows = cur.execute("SELECT id, name, address, latitude, longitude FROM stores").fetchall()
@@ -200,7 +545,7 @@ def get_stores():
 
 
 @app.get("/products", response_model=List[Product])
-def get_products(store_id: str | None = None):
+def get_products(store_id: str | None = None, _: None = Depends(_require_api_token)):
     conn = get_conn()
     cur = conn.cursor()
     if store_id:
@@ -217,56 +562,59 @@ def get_products(store_id: str | None = None):
 
 
 @app.get("/drone/position")
-def drone_position(
+async def drone_position(
     orderId: str,
     start_lat: float = 43.238949,
     start_lng: float = 76.889709,
     end_lat: float = 43.2409,
     end_lng: float = 76.9170,
+    _: None = Depends(_require_api_token),
+    order_token: str | None = Header(default=None, alias="X-Order-Token"),
 ):
-    """Legacy HTTP endpoint for drone position (kept for compatibility)"""
-    period = 20.0
-    now = time.time()
-
-    state = order_states.get(orderId)
+    _require_order_token(orderId, order_token)
+    state = _get_order_state(orderId)
     if state is None:
-        state = {
-            "start_time": now,
-            "start": (start_lat, start_lng),
-            "end": (end_lat, end_lng),
+        # Demo-friendly behavior: kick off simulation and return initial position
+        try:
+            await _start_simulation(orderId, start_lat, start_lng, end_lat, end_lng)
+        except Exception:
+            # If simulator is unavailable, still return a sane initial payload
+            pass
+        return {
+            "lat": start_lat,
+            "lng": start_lng,
             "delivered": False,
+            "progress": 0.0,
+            "status": "Preparing",
         }
-        order_states[orderId] = state
-
-    if state["delivered"]:
-        end = state["end"]
-        return {"lat": end[0], "lng": end[1], "delivered": True}
-
-    elapsed = now - state["start_time"]
-    progress = min(1.0, elapsed / period)
-    start = state["start"]
-    end = state["end"]
-
-    lat = start[0] + (end[0] - start[0]) * progress
-    lng = start[1] + (end[1] - start[1]) * progress
-
-    delivered = progress >= 1.0
-    if delivered:
-        state["delivered"] = True
-
-    return {"lat": lat, "lng": lng, "delivered": delivered}
+    return {
+        "lat": state["lat"],
+        "lng": state["lng"],
+        "delivered": bool(state["delivered"]),
+        "progress": state["progress"],
+        "status": state["status"],
+    }
 
 
 @app.get("/")
-def root():
+def root(_: None = Depends(_require_api_token)):
     return {"status": "ok"}
 
 
 @app.websocket("/ws/drone")
 async def websocket_endpoint(websocket: WebSocket):
+    try:
+        _require_ws_auth(websocket)
+    except WebSocketException as exc:
+        await websocket.close(code=exc.code)
+        return
+
     await websocket.accept()
     client_id = f"client_{id(websocket)}"
-    print(f"WebSocket client connected: {client_id}")
+
+    async with clients_lock:
+        connected_clients[client_id] = websocket
+        client_subscriptions[client_id] = None
 
     try:
         while True:
@@ -274,103 +622,50 @@ async def websocket_endpoint(websocket: WebSocket):
             message = json.loads(data)
 
             if message.get("type") == "start_tracking":
-                await handle_start_tracking(client_id, websocket, message)
-    except Exception as e:
-        print(f"WebSocket error: {e}")
+                order_id = message.get("orderId")
+                if not order_id:
+                    await websocket.send_text(json.dumps({"type": "error", "message": "orderId is required"}))
+                    continue
+
+                # Demo-friendly: kick off simulation on WS tracking start
+                try:
+                    start_lat = float(message.get("start_lat", 43.238949))
+                    start_lng = float(message.get("start_lng", 76.889709))
+                    end_lat = float(message.get("end_lat", 43.2409))
+                    end_lng = float(message.get("end_lng", 76.9170))
+                except Exception:
+                    start_lat = 43.238949
+                    start_lng = 76.889709
+                    end_lat = 43.2409
+                    end_lng = 76.9170
+
+                if _get_order_state(order_id) is None:
+                    try:
+                        await _start_simulation(order_id, start_lat, start_lng, end_lat, end_lng)
+                    except Exception:
+                        pass
+
+                async with clients_lock:
+                    client_subscriptions[client_id] = order_id
+
+                state = _get_order_state(order_id)
+                if state:
+                    await websocket.send_text(
+                        json.dumps(
+                            {
+                                "type": "drone_position",
+                                "lat": state["lat"],
+                                "lng": state["lng"],
+                                "delivered": bool(state["delivered"]),
+                                "progress": state["progress"],
+                                "status": state["status"],
+                                "orderId": order_id,
+                            }
+                        )
+                    )
+    except Exception:
+        pass
     finally:
-        if client_id in active_flights:
-            active_flights[client_id].cancel()
-            del active_flights[client_id]
-        print(f"WebSocket client disconnected: {client_id}")
-
-
-async def handle_start_tracking(client_id: str, websocket: WebSocket, message: dict):
-    order_id = message.get("orderId")
-    start_lat = float(message.get("start_lat", 43.238949))
-    start_lng = float(message.get("start_lng", 76.889709))
-    end_lat = float(message.get("end_lat", 43.2409))
-    end_lng = float(message.get("end_lng", 76.9170))
-
-    if not order_id:
-        await websocket.send_text(json.dumps({"type": "error", "message": "orderId is required"}))
-        return
-
-    order_states[order_id] = {
-        "start_time": time.time(),
-        "start": (start_lat, start_lng),
-        "end": (end_lat, end_lng),
-        "delivered": False,
-        "client_id": client_id,
-    }
-
-    if client_id in active_flights:
-        active_flights[client_id].cancel()
-
-    active_flights[client_id] = asyncio.create_task(
-        simulate_flight(client_id, websocket, order_id, start_lat, start_lng, end_lat, end_lng)
-    )
-
-
-async def simulate_flight(
-    client_id: str,
-    websocket: WebSocket,
-    order_id: str,
-    start_lat: float,
-    start_lng: float,
-    end_lat: float,
-    end_lng: float,
-):
-    """
-    Simulate drone flight by sending coordinates every 5 seconds.
-    Total flight time is 60 seconds.
-    """
-    flight_duration = 30.0
-    update_interval = 5.0
-    start_time = time.time()
-
-    try:
-        while True:
-            now = time.time()
-            elapsed = now - start_time
-            progress = min(1.0, elapsed / flight_duration)
-
-            lat = start_lat + (end_lat - start_lat) * progress
-            lng = start_lng + (end_lng - start_lng) * progress
-            delivered = progress >= 1.0
-
-            if delivered:
-                status = "Delivered"
-            elif progress < 0.2:
-                status = "Taking off..."
-            elif progress < 0.8:
-                status = "In flight"
-            else:
-                status = "Approaching destination..."
-
-            await websocket.send_text(
-                json.dumps(
-                    {
-                        "type": "drone_position",
-                        "lat": lat,
-                        "lng": lng,
-                        "delivered": delivered,
-                        "progress": progress,
-                        "status": status,
-                        "orderId": order_id,
-                    }
-                )
-            )
-
-            state = order_states.get(order_id)
-            if state:
-                state["delivered"] = delivered
-
-            if delivered:
-                print(f"Order {order_id} delivered to client {client_id}")
-                break
-
-            await asyncio.sleep(update_interval)
-    except asyncio.CancelledError:
-        print(f"Flight task cancelled for order {order_id}")
-    except Exception as e:
-        print(f"Error in flight simulation: {e}")
+        async with clients_lock:
+            connected_clients.pop(client_id, None)
+            client_subscriptions.pop(client_id, None)
