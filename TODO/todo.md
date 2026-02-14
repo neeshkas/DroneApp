@@ -7,6 +7,14 @@
 - [x] 11. Remove obsolete backend folder and update README for Docker usage
 - [ ] 12. Run tests/health checks for all services; fix issues
   - Blocked: Docker engine not responding (500 on _ping).
+
+## Map + Geocoding (OSM + Nominatim)
+- [x] 13. Unify map tiles to OSM across Cart/Checkout/Tracking screens
+- [x] 14. Add OSM attribution in map UI
+- [x] 15. Improve backend geocoding query (format=jsonv2, countrycodes=kz, accept-language=ru, viewbox)
+- [x] 16. Normalize user query to include "Алматы, Казахстан" when missing
+- [x] 17. Ensure frontend recenters map and updates marker after search
+- [x] 18. Validate: address search “Дуйсенова 29” returns a point on map
 - [x] 0. Create this TODO checklist and keep it updated after each step
 - [x] 1. Split services: Order API, Tracking Service, Drone Simulator (separate folders)
 - [x] 2. Define REST contracts between services and adjust code paths

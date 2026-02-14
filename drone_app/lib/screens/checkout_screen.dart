@@ -170,33 +170,53 @@ class _MapCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
         height: 240,
-        child: FlutterMap(
-          options: MapOptions(
-            initialCenter: delivery,
-            initialZoom: 13,
-            onTap: (_, point) => onPick(point),
-            interactionOptions: const InteractionOptions(flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag),
-          ),
+        child: Stack(
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.example.drone_app',
-            ),
-            MarkerLayer(
-              markers: [
-                Marker(
-                  point: delivery,
-                  width: 36,
-                  height: 36,
-                  child: const _PinMarker(label: 'B', color: Colors.green),
+            FlutterMap(
+              key: ValueKey('checkout-map-${context.watch<AppState>().mapTick}'),
+              options: MapOptions(
+                initialCenter: delivery,
+                initialZoom: 13,
+                onTap: (_, point) => onPick(point),
+                interactionOptions: const InteractionOptions(flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag),
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.droneapp.demo',
                 ),
-                Marker(
-                  point: start,
-                  width: 36,
-                  height: 36,
-                  child: const _PinMarker(label: 'A', color: Colors.black),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: delivery,
+                      width: 36,
+                      height: 36,
+                      child: const _PinMarker(label: 'B', color: Colors.green),
+                    ),
+                    Marker(
+                      point: start,
+                      width: 36,
+                      height: 36,
+                      child: const _PinMarker(label: 'A', color: Colors.black),
+                    ),
+                  ],
                 ),
               ],
+            ),
+            Positioned(
+              right: 10,
+              bottom: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: const Text(
+                  '© OpenStreetMap contributors',
+                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+                ),
+              ),
             ),
           ],
         ),

@@ -393,6 +393,7 @@ class _MapCard extends StatelessWidget {
         child: Stack(
           children: [
             FlutterMap(
+              key: ValueKey('cart-map-${context.watch<AppState>().mapTick}'),
               options: MapOptions(
                 initialCenter: delivery,
                 initialZoom: 13,
@@ -401,10 +402,10 @@ class _MapCard extends StatelessWidget {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                  subdomains: const ['a', 'b', 'c', 'd'],
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   tileProvider: CancellableNetworkTileProvider(),
                   retinaMode: true,
+                  userAgentPackageName: 'com.droneapp.demo',
                 ),
                 MarkerLayer(
                   markers: [
@@ -433,6 +434,22 @@ class _MapCard extends StatelessWidget {
                 child: Text(
                   'Tap map to adjust drop point',
                   style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+            Positioned(
+              right: 12,
+              bottom: 12,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface.withOpacity(0.9),
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+                ),
+                child: Text(
+                  '© OpenStreetMap contributors',
+                  style: GoogleFonts.sora(fontSize: 10, fontWeight: FontWeight.w600),
                 ),
               ),
             ),

@@ -73,6 +73,7 @@ class AppState extends ChangeNotifier {
   LatLng dronePosition = fallbackClient;
   String statusLabel = 'Waiting for dispatch';
   bool isDelivered = false;
+  int mapTick = 0;
 
   static final fallbackClient = LatLng(43.238949, 76.889709); // Almaty
 
@@ -166,6 +167,7 @@ class AppState extends ChangeNotifier {
   void setDeliveryPoint(LatLng point) {
     deliveryPoint = point;
     deliveryAddress = '${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)}';
+    mapTick++;
     notifyListeners();
   }
 
@@ -180,6 +182,7 @@ class AppState extends ChangeNotifier {
     } else {
       deliveryAddress = '${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)}';
     }
+    mapTick++;
     notifyListeners();
   }
 
@@ -189,6 +192,7 @@ class AppState extends ChangeNotifier {
     if (result == null) return false;
     deliveryPoint = result.point;
     deliveryAddress = result.address;
+    mapTick++;
     notifyListeners();
     return true;
   }

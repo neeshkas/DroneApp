@@ -67,10 +67,10 @@ class TrackingScreen extends StatelessWidget {
               ),
               children: [
                 TileLayer(
-                  urlTemplate: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                  subdomains: const ['a', 'b', 'c', 'd'],
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   tileProvider: CancellableNetworkTileProvider(),
                   retinaMode: true,
+                  userAgentPackageName: 'com.droneapp.demo',
                 ),
                 if (path.isNotEmpty)
                   PolylineLayer(
@@ -86,6 +86,14 @@ class TrackingScreen extends StatelessWidget {
                   ],
                 ),
               ],
+            ),
+          ),
+          Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.fromLTRB(0, 6, 12, 0),
+            child: Text(
+              '© OpenStreetMap contributors',
+              style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6), fontSize: 10),
             ),
           ),
           _StatusPanel(

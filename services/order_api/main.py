@@ -408,16 +408,27 @@ def get_products(store_id: Optional[str] = None):
     return [Product(**dict(r)) for r in rows]
 
 
+def _normalize_query(q: str) -> str:
+    value = q.strip()
+    if not value:
+        return value
+    lower = value.lower()
+    if "алматы" in lower or "almaty" in lower:
+        return value
+    return f"{value}, Алматы, Казахстан"
+
+
 @app.get("/geocode")
 def geocode(q: str):
     try:
         params = {
-            "format": "json",
-            "q": f"{q}, Almaty, Kazakhstan",
+            "format": "jsonv2",
+            "q": _normalize_query(q),
             "limit": 5,
             "viewbox": ALMATY_VIEWBOX,
             "bounded": 1,
             "addressdetails": 1,
+            "countrycodes": "kz",
         }
         return _nominatim_get("/search", params)
     except Exception as exc:

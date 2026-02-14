@@ -30,7 +30,7 @@ class StartRequest(BaseModel):
     end_lat: float = 43.2409
     end_lng: float = 76.9170
     duration_sec: float = 10.0
-    update_interval_sec: float = 5.0
+    update_interval_sec: float = 3.0
 
 
 def _read_key_value(value: str | None, path: str | None, env_name: str) -> str:
