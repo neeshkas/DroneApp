@@ -1,56 +1,75 @@
-# Flutter / Dart
-**/build/
-**/.dart_tool/
-**/.flutter-plugins
-**/.flutter-plugins-dependencies
-**/.packages
-**/pubspec.lock
-**/.metadata
+# OS
+.DS_Store
+Thumbs.db
 
 # IDE
 .vscode/
-**/.idea/
-**/*.iml
-**/.claude/
-**/nul
+.idea/
+*.iml
 
-# Android/Gradle
-**/.gradle/
-**/local.properties
-**/android/app/debug/
-**/android/app/profile/
-**/android/app/release/
-
-# iOS/Xcode
-**/ios/Flutter/Flutter.podspec
-**/ios/Pods/
-**/ios/.symlinks/
-**/ios/Flutter/App.framework
-**/ios/Flutter/Flutter.framework
-**/ios/Flutter/Flutter.podspec
-**/ios/ServiceDefinitions.json
-**/ios/Runner/GeneratedPluginRegistrant.*
-**/macos/Pods/
-
-# Web
-**/web/.dart_tool/
-
-# Linux/Windows/macOS build
-**/CMakeFiles/
-**/cmake-build-*/
-**/Makefile
-**/CMakeCache.txt
+# Logs
+*.log
 
 # Python
-**/__pycache__/
-*.pyc
+__pycache__/
+*.py[cod]
 *.pyo
 *.pyd
-*.sqlite3
-*.db
-venv/
+*.egg-info/
+.pytest_cache/
 .venv/
+venv/
+.env
+.env.*
 
-# OS junk
-.DS_Store
-Thumbs.db
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Build artifacts
+build/
+dist/
+*.egg/
+
+# Docker
+*.pid
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+pubspec.lock
+
+# Flutter platform builds
+android/.gradle/
+android/local.properties
+android/app/debug/
+android/app/profile/
+android/app/release/
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+macos/Pods/
+linux/CMakeFiles/
+linux/cmake-build-*/
+linux/CMakeCache.txt
+linux/Makefile
+windows/CMakeFiles/
+windows/cmake-build-*/
+windows/CMakeCache.txt
+windows/Makefile
+web/.dart_tool/
+
+# Artifacts
+**/build/
+**/.dart_tool/
+**/.venv/
+**/drone.db
+**/order_api.db
+**/tracking.db

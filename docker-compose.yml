@@ -1,0 +1,72 @@
+services:
+  jwt_init:
+    image: alpine:3.20
+    volumes:
+      - jwt_keys:/keys
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache openssl >/dev/null 2>&1
+        if [ ! -f /keys/private.pem ]; then
+          openssl genrsa -out /keys/private.pem 2048
+          openssl rsa -in /keys/private.pem -pubout -out /keys/public.pem
+        fi
+    restart: "no"
+
+  order_api:
+    build: ./services/order_api
+    depends_on:
+      - jwt_init
+      - drone_simulator
+    ports:
+      - "18000:8000"
+    environment:
+      JWT_PRIVATE_KEY_PATH: /keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /keys/public.pem
+      JWT_ISSUER: droneapp
+      JWT_AUDIENCE: droneapp-clients
+      SIMULATOR_URL: http://drone_simulator:8001
+      CORS_ALLOW_ORIGINS: "*"
+    volumes:
+      - jwt_keys:/keys:ro
+
+  tracking_service:
+    build: ./services/tracking_service
+    depends_on:
+      - jwt_init
+    ports:
+      - "18002:8002"
+    environment:
+      JWT_PUBLIC_KEY_PATH: /keys/public.pem
+      JWT_ISSUER: droneapp
+      JWT_AUDIENCE: droneapp-clients
+      CORS_ALLOW_ORIGINS: "*"
+    volumes:
+      - jwt_keys:/keys:ro
+
+  drone_simulator:
+    build: ./services/drone_simulator
+    depends_on:
+      - jwt_init
+      - tracking_service
+    ports:
+      - "18001:8001"
+    environment:
+      JWT_PRIVATE_KEY_PATH: /keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /keys/public.pem
+      JWT_ISSUER: droneapp
+      JWT_AUDIENCE: droneapp-clients
+      TRACKING_URL: http://tracking_service:8002
+    volumes:
+      - jwt_keys:/keys:ro
+
+  frontend:
+    build: ./drone_app
+    depends_on:
+      - order_api
+      - tracking_service
+    ports:
+      - "18080:80"
+
+volumes:
+  jwt_keys:

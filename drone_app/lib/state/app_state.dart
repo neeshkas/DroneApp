@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -21,24 +20,34 @@ class AppState extends ChangeNotifier {
     return host;
   }
 
-  static String get _baseUrl {
+  static String get _orderApiBaseUrl {
     if (kIsWeb) {
       final base = Uri.base;
       final host = _normalizeWebHost(base.host);
       final scheme = (base.scheme == 'https' || base.scheme == 'http') ? base.scheme : 'http';
-      return '$scheme://$host:8000';
+      return '$scheme://$host:18000';
     }
-    return 'http://127.0.0.1:8000';
+    return 'http://127.0.0.1:18000';
   }
 
-  static String get _wsUrl {
+  static String get _trackingBaseUrl {
+    if (kIsWeb) {
+      final base = Uri.base;
+      final host = _normalizeWebHost(base.host);
+      final scheme = (base.scheme == 'https' || base.scheme == 'http') ? base.scheme : 'http';
+      return '$scheme://$host:18002';
+    }
+    return 'http://127.0.0.1:18002';
+  }
+
+  static String _buildTrackingWsUrl(String deliveryId, String token) {
     if (kIsWeb) {
       final base = Uri.base;
       final host = _normalizeWebHost(base.host);
       final wsScheme = base.scheme == 'https' ? 'wss' : 'ws';
-      return '$wsScheme://$host:8000/ws/drone';
+      return '$wsScheme://$host:18002/ws/track/$deliveryId?token=$token';
     }
-    return 'ws://127.0.0.1:8000/ws/drone';
+    return 'ws://127.0.0.1:18002/ws/track/$deliveryId?token=$token';
   }
 
   // WebSocket connection
@@ -51,7 +60,9 @@ class AppState extends ChangeNotifier {
   List<Product> _allProducts = [];
   List<CartItem> cartItems = [];
   Store? selectedStore;
-  String? orderId;
+  String? deliveryId;
+  String? trackingAccessToken;
+  String? trackingRefreshToken;
 
   // Delivery
   LatLng deliveryPoint = fallbackClient;
@@ -83,7 +94,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _fetchStores() async {
     try {
-      final response = await http.get(Uri.parse('$_baseUrl/stores'));
+      final response = await http.get(Uri.parse('$_orderApiBaseUrl/stores'));
       if (response.statusCode == 200) {
         final List<dynamic> storeJson = json.decode(utf8.decode(response.bodyBytes));
         stores = storeJson.map((json) => Store.fromJson(json)).toList();
@@ -95,7 +106,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _fetchAllProducts() async {
     try {
-      final response = await http.get(Uri.parse('$_baseUrl/products'));
+      final response = await http.get(Uri.parse('$_orderApiBaseUrl/products'));
       if (response.statusCode == 200) {
         final List<dynamic> productJson = json.decode(utf8.decode(response.bodyBytes));
         _allProducts = productJson.map((json) => Product.fromJson(json)).toList();
@@ -184,7 +195,7 @@ class AppState extends ChangeNotifier {
 
   Future<_GeoResult?> _geocode(String query) async {
     try {
-      final uri = Uri.parse('$_baseUrl/geocode').replace(queryParameters: {'q': query});
+      final uri = Uri.parse('$_orderApiBaseUrl/geocode').replace(queryParameters: {'q': query});
       final response = await http.get(uri);
       if (response.statusCode != 200) return null;
       final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
@@ -203,7 +214,7 @@ class AppState extends ChangeNotifier {
 
   Future<String?> _reverseGeocode(LatLng point) async {
     try {
-      final uri = Uri.parse('$_baseUrl/reverse-geocode').replace(queryParameters: {
+      final uri = Uri.parse('$_orderApiBaseUrl/reverse-geocode').replace(queryParameters: {
         'lat': point.latitude.toString(),
         'lng': point.longitude.toString(),
       });
@@ -220,14 +231,53 @@ class AppState extends ChangeNotifier {
 
   void payAndLaunch({required bool useBackendTracking}) {
     if (isCartEmpty || selectedStore == null) return;
-    orderId = 'ORDER-${Random().nextInt(99999)}';
+    deliveryId = null;
+    trackingAccessToken = null;
+    trackingRefreshToken = null;
     isDelivered = false;
     statusLabel = 'Preparing drone and loading payload...';
 
-    if (useBackendTracking) {
-      _startWebSocketTracking();
-    } else {
-      _startHttpTracking();
+    _createDelivery(useBackendTracking: useBackendTracking);
+    notifyListeners();
+  }
+
+  Future<void> _createDelivery({required bool useBackendTracking}) async {
+    final start = selectedStore != null ? LatLng(selectedStore!.latitude, selectedStore!.longitude) : fallbackClient;
+    final end = deliveryPoint;
+    try {
+      final response = await http.post(
+        Uri.parse('$_orderApiBaseUrl/deliveries'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'store_id': selectedStore!.id,
+          'start_lat': start.latitude,
+          'start_lng': start.longitude,
+          'end_lat': end.latitude,
+          'end_lng': end.longitude,
+        }),
+      );
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        statusLabel = 'Failed to create delivery';
+        notifyListeners();
+        return;
+      }
+      final data = json.decode(utf8.decode(response.bodyBytes));
+      deliveryId = data['delivery_id'] as String?;
+      trackingAccessToken = data['tracking_access_token'] as String?;
+      trackingRefreshToken = data['tracking_refresh_token'] as String?;
+      if (deliveryId == null || trackingAccessToken == null) {
+        statusLabel = 'Invalid delivery response';
+        notifyListeners();
+        return;
+      }
+      if (useBackendTracking) {
+        _startWebSocketTracking();
+      } else {
+        _startHttpTracking();
+      }
+    } catch (e) {
+      statusLabel = 'Failed to create delivery';
+      debugPrint('Create delivery error: $e');
     }
     notifyListeners();
   }
@@ -247,8 +297,13 @@ class AppState extends ChangeNotifier {
 
     // Connect to WebSocket
     try {
-      debugPrint('Connecting to WS: $_wsUrl (base: $_baseUrl)');
-      _ws = await WsClient.connect(_wsUrl);
+      if (deliveryId == null || trackingAccessToken == null) {
+        statusLabel = 'Missing tracking token';
+        return;
+      }
+      final wsUrl = _buildTrackingWsUrl(deliveryId!, trackingAccessToken!);
+      debugPrint('Connecting to WS: $wsUrl');
+      _ws = await WsClient.connect(wsUrl);
 
       // Listen for messages from server
       _subscription = _ws!.stream.listen(
@@ -269,19 +324,7 @@ class AppState extends ChangeNotifier {
         },
       );
 
-      // Send start_tracking message
-      _ws!.send(
-        json.encode({
-          'type': 'start_tracking',
-          'orderId': orderId,
-          'start_lat': start.latitude,
-          'start_lng': start.longitude,
-          'end_lat': end.latitude,
-          'end_lng': end.longitude,
-        }),
-      );
-
-      statusLabel = 'Drone preparing...';
+      statusLabel = 'Tracking drone...';
     } catch (e) {
       debugPrint('Failed to connect to WebSocket: $e');
       statusLabel = 'Connection failed';
@@ -293,7 +336,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _startHttpTracking() async {
     if (_httpFallbackActive) return;
-    if (orderId == null) return;
+    if (deliveryId == null) return;
 
     _httpFallbackActive = true;
     _stopHttpTracking();
@@ -304,23 +347,23 @@ class AppState extends ChangeNotifier {
       final start = selectedStore != null ? LatLng(selectedStore!.latitude, selectedStore!.longitude) : fallbackClient;
       final end = deliveryPoint;
       try {
-        final uri = Uri.parse('$_baseUrl/drone/position').replace(queryParameters: {
-          'orderId': orderId!,
-          'start_lat': start.latitude.toString(),
-          'start_lng': start.longitude.toString(),
-          'end_lat': end.latitude.toString(),
-          'end_lng': end.longitude.toString(),
+        final uri = Uri.parse('$_trackingBaseUrl/track/$deliveryId');
+        final response = await http.get(uri, headers: {
+          if (trackingAccessToken != null) 'Authorization': 'Bearer $trackingAccessToken',
         });
-        final response = await http.get(uri);
+        if (response.statusCode == 401 && trackingRefreshToken != null) {
+          final refreshed = await _refreshAccessToken();
+          if (!refreshed) return;
+        }
         if (response.statusCode != 200) return;
         final data = json.decode(utf8.decode(response.bodyBytes));
         final lat = (data['lat'] as num).toDouble();
         final lng = (data['lng'] as num).toDouble();
-        final delivered = data['delivered'] as bool? ?? false;
+        final delivered = data['status'] == 'DELIVERED';
 
         dronePosition = LatLng(lat, lng);
         isDelivered = delivered;
-        statusLabel = delivered ? 'Delivered' : 'In flight';
+        statusLabel = delivered ? 'Delivered' : data['status'] as String? ?? 'In flight';
         notifyListeners();
 
         if (delivered) {
@@ -346,9 +389,9 @@ class AppState extends ChangeNotifier {
       if (message is String) {
         final data = json.decode(message);
 
-        if (data['type'] == 'drone_position') {
-          dronePosition = LatLng(data['lat'] as double, data['lng'] as double);
-          isDelivered = data['delivered'] as bool? ?? false;
+        if (data['lat'] != null && data['lng'] != null) {
+          dronePosition = LatLng((data['lat'] as num).toDouble(), (data['lng'] as num).toDouble());
+          isDelivered = data['status'] == 'DELIVERED';
           statusLabel = data['status'] as String? ?? 'In flight';
 
           if (isDelivered) {
@@ -368,6 +411,23 @@ class AppState extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Error parsing WebSocket message: $e');
+    }
+  }
+
+  Future<bool> _refreshAccessToken() async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_orderApiBaseUrl/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'refresh_token': trackingRefreshToken}),
+      );
+      if (response.statusCode != 200) return false;
+      final data = json.decode(utf8.decode(response.bodyBytes));
+      trackingAccessToken = data['access_token'] as String?;
+      return trackingAccessToken != null;
+    } catch (e) {
+      debugPrint('Refresh token error: $e');
+      return false;
     }
   }
 

@@ -21,7 +21,7 @@ class TrackingScreen extends StatelessWidget {
     final end = appState.deliveryPoint;
     final theme = Theme.of(context);
 
-    if (appState.orderId == null) {
+    if (appState.deliveryId == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Live flight')),
         body: Center(
@@ -90,7 +90,7 @@ class TrackingScreen extends StatelessWidget {
           ),
           _StatusPanel(
             status: appState.statusLabel,
-            orderId: appState.orderId!,
+            orderId: appState.deliveryId!,
             isDelivered: appState.isDelivered,
           ),
         ],
