@@ -4,7 +4,6 @@ import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_ti
 import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../state/app_state.dart';
 
@@ -164,10 +163,10 @@ class _StatusPanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     if (isDelivered)
-                      _QrCodeSection(orderId: orderId)
+                      _PickupCodeSection(code: context.read<AppState>().deliveryCode ?? '----')
                     else
                       Text(
-                        'Your drone is en route. You will get a QR code when it lands.',
+                        'Your drone is en route. You will get a code when it lands.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8)),
                       ),
@@ -212,9 +211,9 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-class _QrCodeSection extends StatelessWidget {
-  final String orderId;
-  const _QrCodeSection({required this.orderId});
+class _PickupCodeSection extends StatelessWidget {
+  final String code;
+  const _PickupCodeSection({required this.code});
 
   @override
   Widget build(BuildContext context) {
@@ -232,10 +231,10 @@ class _QrCodeSection extends StatelessWidget {
         const SizedBox(height: 12),
         Center(
           child: Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               boxShadow: [
                 BoxShadow(
                   color: theme.colorScheme.secondary.withOpacity(0.3),
@@ -244,16 +243,20 @@ class _QrCodeSection extends StatelessWidget {
                 )
               ],
             ),
-            child: QrImageView(
-              data: '{"order_id": "$orderId", "action": "confirm_delivery"}',
-              version: QrVersions.auto,
-              size: 150.0,
+            child: Text(
+              code,
+              style: GoogleFonts.sora(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 4,
+                color: theme.colorScheme.secondary,
+              ),
             ),
           ),
         ),
         const SizedBox(height: 12),
         Text(
-          'Show this QR code to confirm receipt.',
+          'Show this 4‑symbol code to confirm receipt.',
           textAlign: TextAlign.center,
           style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8)),
         ),

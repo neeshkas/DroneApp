@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -63,6 +64,7 @@ class AppState extends ChangeNotifier {
   String? deliveryId;
   String? trackingAccessToken;
   String? trackingRefreshToken;
+  String? deliveryCode;
 
   // Delivery
   LatLng deliveryPoint = fallbackClient;
@@ -197,7 +199,7 @@ class AppState extends ChangeNotifier {
     return true;
   }
 
-  Future<_GeoResult?> _geocode(String query) async {
+  Future<GeoSuggestion?> _geocode(String query) async {
     try {
       final uri = Uri.parse('$_orderApiBaseUrl/geocode').replace(queryParameters: {'q': query});
       final response = await http.get(uri);
@@ -209,10 +211,33 @@ class AppState extends ChangeNotifier {
       final lon = double.tryParse(first['lon']?.toString() ?? '');
       final address = first['display_name']?.toString();
       if (lat == null || lon == null || address == null) return null;
-      return _GeoResult(LatLng(lat, lon), address);
+      return GeoSuggestion(LatLng(lat, lon), address);
     } catch (e) {
       debugPrint('Geocode error: $e');
       return null;
+    }
+  }
+
+  Future<List<GeoSuggestion>> searchAddressSuggestions(String query) async {
+    if (query.trim().isEmpty) return [];
+    try {
+      final uri = Uri.parse('$_orderApiBaseUrl/geocode').replace(queryParameters: {'q': query.trim()});
+      final response = await http.get(uri);
+      if (response.statusCode != 200) return [];
+      final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
+      final results = <GeoSuggestion>[];
+      for (final item in data) {
+        final row = item as Map<String, dynamic>;
+        final lat = double.tryParse(row['lat']?.toString() ?? '');
+        final lon = double.tryParse(row['lon']?.toString() ?? '');
+        final address = row['display_name']?.toString();
+        if (lat == null || lon == null || address == null) continue;
+        results.add(GeoSuggestion(LatLng(lat, lon), address));
+      }
+      return results;
+    } catch (e) {
+      debugPrint('Geocode suggestions error: $e');
+      return [];
     }
   }
 
@@ -238,6 +263,7 @@ class AppState extends ChangeNotifier {
     deliveryId = null;
     trackingAccessToken = null;
     trackingRefreshToken = null;
+    deliveryCode = null;
     isDelivered = false;
     statusLabel = 'Preparing drone and loading payload...';
 
@@ -269,6 +295,7 @@ class AppState extends ChangeNotifier {
       deliveryId = data['delivery_id'] as String?;
       trackingAccessToken = data['tracking_access_token'] as String?;
       trackingRefreshToken = data['tracking_refresh_token'] as String?;
+      deliveryCode = _generatePickupCode();
       if (deliveryId == null || trackingAccessToken == null) {
         statusLabel = 'Invalid delivery response';
         notifyListeners();
@@ -284,6 +311,12 @@ class AppState extends ChangeNotifier {
       debugPrint('Create delivery error: $e');
     }
     notifyListeners();
+  }
+
+  String _generatePickupCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    final rand = Random();
+    return List.generate(4, (_) => chars[rand.nextInt(chars.length)]).join();
   }
 
   Future<void> _startWebSocketTracking() async {
@@ -444,8 +477,8 @@ class AppState extends ChangeNotifier {
   }
 }
 
-class _GeoResult {
+class GeoSuggestion {
   final LatLng point;
   final String address;
-  const _GeoResult(this.point, this.address);
+  const GeoSuggestion(this.point, this.address);
 }

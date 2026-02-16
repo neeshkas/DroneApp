@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
@@ -6,7 +8,6 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../models/cart_item.dart';
-import '../models/store.dart';
 import '../state/app_state.dart';
 import 'tracking_screen.dart';
 
@@ -18,12 +19,8 @@ class CartScreen extends StatefulWidget {
 }
 
 class _CartScreenState extends State<CartScreen> {
-  final TextEditingController _addressCtrl = TextEditingController();
-  bool _isSearching = false;
-
   @override
   void dispose() {
-    _addressCtrl.dispose();
     super.dispose();
   }
 
@@ -69,30 +66,6 @@ class _CartScreenState extends State<CartScreen> {
                 CustomScrollView(
                   slivers: [
                     SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                      sliver: SliverToBoxAdapter(
-                        child: _SectionHeader(
-                          title: 'Cart',
-                          subtitle: '${items.length} item${items.length == 1 ? '' : 's'}',
-                        ),
-                      ),
-                    ),
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                      sliver: SliverList.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          return _CartItemRow(
-                            item: item,
-                            onDecrement: () => context.read<AppState>().decrement(item.product.id),
-                            onIncrement: () => context.read<AppState>().increment(item.product.id),
-                          );
-                        },
-                      ),
-                    ),
-                    SliverPadding(
                       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
                       sliver: SliverToBoxAdapter(
                         child: _SectionHeader(
@@ -104,43 +77,59 @@ class _CartScreenState extends State<CartScreen> {
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       sliver: SliverToBoxAdapter(
-                        child: _MapCard(
-                          store: appState.selectedStore,
-                          delivery: appState.deliveryPoint,
-                          onPick: (p) => context.read<AppState>().setDeliveryPointFromMap(p),
+                        child: _AddressRow(
+                          address: appState.deliveryAddress,
+                          onTap: () async {
+                            await Navigator.of(context).push(
+                              PageRouteBuilder(
+                                opaque: false,
+                                pageBuilder: (_, __, ___) => const _AddressPickerScreen(),
+                                transitionsBuilder: (_, animation, __, child) {
+                                  final fade = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+                                  final scale = Tween<double>(begin: 0.98, end: 1.0).animate(fade);
+                                  final slide = Tween<Offset>(begin: const Offset(0, 0.06), end: Offset.zero).animate(fade);
+                                  return FadeTransition(
+                                    opacity: fade,
+                                    child: SlideTransition(
+                                      position: slide,
+                                      child: ScaleTransition(scale: scale, child: child),
+                                    ),
+                                  );
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+                      sliver: SliverToBoxAdapter(
+                        child: _SectionHeader(
+                          title: 'Receipt',
+                          subtitle: '${items.length} item${items.length == 1 ? '' : 's'}',
                         ),
                       ),
                     ),
                     SliverPadding(
                       padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                      sliver: SliverList.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          return _ReceiptItemRow(
+                            item: item,
+                            onDecrement: () => context.read<AppState>().decrement(item.product.id),
+                            onIncrement: () => context.read<AppState>().increment(item.product.id),
+                          );
+                        },
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                       sliver: SliverToBoxAdapter(
-                        child: TextField(
-                          controller: _addressCtrl,
-                          decoration: InputDecoration(
-                            hintText: 'Search street, building, or landmark',
-                            prefixIcon: const Icon(Icons.search),
-                            suffixIcon: _isSearching
-                                ? const Padding(
-                                    padding: EdgeInsets.all(12.0),
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : null,
-                          ),
-                          textInputAction: TextInputAction.search,
-                          onSubmitted: (query) async {
-                            if (_isSearching || query.isEmpty) return;
-                            setState(() => _isSearching = true);
-                            final ok = await context.read<AppState>().setDeliveryByQuery(query);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(ok ? 'Delivery point updated.' : 'Unable to find that location.'),
-                                ),
-                              );
-                            }
-                            setState(() => _isSearching = false);
-                          },
-                        ),
+                        child: _ReceiptTotals(total: appState.totalPrice),
                       ),
                     ),
                     const SliverPadding(padding: EdgeInsets.only(bottom: 220)),
@@ -196,12 +185,12 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _CartItemRow extends StatelessWidget {
+class _ReceiptItemRow extends StatelessWidget {
   final CartItem item;
   final VoidCallback onIncrement;
   final VoidCallback onDecrement;
 
-  const _CartItemRow({
+  const _ReceiptItemRow({
     required this.item,
     required this.onIncrement,
     required this.onDecrement,
@@ -210,74 +199,72 @@ class _CartItemRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final lineTotal = item.product.price * item.quantity;
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 80,
-            height: 80,
-            child: Image.network(
-              item.product.imageUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => Icon(
-                Icons.inventory_2_outlined,
-                color: theme.colorScheme.onSurface.withOpacity(0.3),
-              ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              item.product.title,
+              style: GoogleFonts.sora(fontWeight: FontWeight.w700, fontSize: 14),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 6),
+            Row(
               children: [
-                Text(
-                  item.product.title,
-                  style: GoogleFonts.sora(fontWeight: FontWeight.w600, fontSize: 15),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                Expanded(
+                  child: Text(
+                    '${item.quantity} x KZT ${item.product.price.toStringAsFixed(0)}',
+                    style: GoogleFonts.jetBrainsMono(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface.withOpacity(0.75),
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 6),
                 Text(
-                  'KZT ${item.product.price.toStringAsFixed(0)}',
-                  style: GoogleFonts.sora(
+                  'KZT ${lineTotal.toStringAsFixed(0)}',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    fontSize: 16,
                     color: theme.colorScheme.secondary,
                   ),
                 ),
               ],
             ),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: theme.colorScheme.background,
-              borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), bottomLeft: Radius.circular(12)),
-            ),
-            child: Row(
+            const SizedBox(height: 6),
+            Row(
               children: [
                 IconButton(
                   onPressed: onDecrement,
-                  icon: const Icon(Icons.remove_circle_outline, size: 24),
+                  icon: const Icon(Icons.remove_circle_outline, size: 20),
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
                 ),
                 Text(
                   item.quantity.toString(),
                   style: GoogleFonts.sora(
                     fontWeight: FontWeight.w700,
-                    fontSize: 16,
+                    fontSize: 14,
                     color: theme.colorScheme.primary,
                   ),
                 ),
                 IconButton(
                   onPressed: onIncrement,
-                  icon: const Icon(Icons.add_circle_outline_rounded, size: 24),
+                  icon: const Icon(Icons.add_circle_outline_rounded, size: 20),
                   color: theme.colorScheme.primary,
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
                 ),
               ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -374,85 +361,90 @@ class _CartSummary extends StatelessWidget {
   }
 }
 
-class _MapCard extends StatelessWidget {
-  final Store? store;
-  final LatLng delivery;
-  final ValueChanged<LatLng> onPick;
-
-  const _MapCard({required this.store, required this.delivery, required this.onPick});
+class _ReceiptTotals extends StatelessWidget {
+  final double total;
+  const _ReceiptTotals({required this.total});
 
   @override
   Widget build(BuildContext context) {
-    final start = store != null ? LatLng(store!.latitude, store!.longitude) : AppState.fallbackClient;
     final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          _ReceiptLine(label: 'SUBTOTAL', value: 'KZT ${total.toStringAsFixed(0)}'),
+          const SizedBox(height: 6),
+          _ReceiptLine(label: 'DELIVERY', value: 'KZT 0'),
+          const Divider(height: 16),
+          _ReceiptLine(
+            label: 'TOTAL',
+            value: 'KZT ${total.toStringAsFixed(0)}',
+            strong: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: SizedBox(
-        height: 240,
-        child: Stack(
+class _ReceiptLine extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool strong;
+  const _ReceiptLine({required this.label, required this.value, this.strong = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = GoogleFonts.jetBrainsMono(
+      fontSize: strong ? 13 : 11,
+      fontWeight: strong ? FontWeight.w800 : FontWeight.w600,
+    );
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: style)),
+        Text(value, style: style),
+      ],
+    );
+  }
+}
+
+class _AddressRow extends StatelessWidget {
+  final String address;
+  final VoidCallback onTap;
+
+  const _AddressRow({required this.address, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          border: Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
           children: [
-            FlutterMap(
-              key: ValueKey('cart-map-${context.watch<AppState>().mapTick}'),
-              options: MapOptions(
-                initialCenter: delivery,
-                initialZoom: 13,
-                onTap: (_, point) => onPick(point),
-                interactionOptions: const InteractionOptions(flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag),
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  tileProvider: CancellableNetworkTileProvider(),
-                  retinaMode: true,
-                  userAgentPackageName: 'com.droneapp.demo',
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: delivery,
-                      child: _PinMarker(icon: Icons.location_on, color: theme.colorScheme.secondary),
-                    ),
-                    Marker(
-                      point: start,
-                      child: _PinMarker(icon: Icons.storefront, color: theme.colorScheme.primary),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            Positioned(
-              left: 12,
-              bottom: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
-                ),
-                child: Text(
-                  'Tap map to adjust drop point',
-                  style: GoogleFonts.sora(fontSize: 11, fontWeight: FontWeight.w600),
-                ),
+            Icon(Icons.place_outlined, color: theme.colorScheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                address,
+                style: GoogleFonts.sora(fontWeight: FontWeight.w600),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            Positioned(
-              right: 12,
-              bottom: 12,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surface.withOpacity(0.9),
-                  borderRadius: BorderRadius.circular(999),
-                  border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
-                ),
-                child: Text(
-                  '© OpenStreetMap contributors',
-                  style: GoogleFonts.sora(fontSize: 10, fontWeight: FontWeight.w600),
-                ),
-              ),
-            ),
+            const Icon(Icons.chevron_right),
           ],
         ),
       ),
@@ -473,6 +465,256 @@ class _PinMarker extends StatelessWidget {
         Icon(Icons.circle, color: color.withOpacity(0.2), size: 46),
         Icon(icon, color: color, size: 26),
       ],
+    );
+  }
+}
+
+class _AddressPickerScreen extends StatefulWidget {
+  const _AddressPickerScreen();
+
+  @override
+  State<_AddressPickerScreen> createState() => _AddressPickerScreenState();
+}
+
+class _AddressPickerScreenState extends State<_AddressPickerScreen> {
+  final TextEditingController _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  final List<GeoSuggestion> _suggestions = [];
+  bool _isLoading = false;
+  LatLng? _tempPoint;
+  String? _tempAddress;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    final appState = context.read<AppState>();
+    _tempPoint = appState.deliveryPoint;
+    _tempAddress = appState.deliveryAddress;
+    _controller.text = appState.deliveryAddress;
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchSuggestions(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _suggestions.clear();
+        _isLoading = false;
+      });
+      return;
+    }
+    setState(() => _isLoading = true);
+    final results = await context.read<AppState>().searchAddressSuggestions(query);
+    if (!mounted) return;
+    setState(() {
+      _suggestions
+        ..clear()
+        ..addAll(results);
+      _isLoading = false;
+    });
+  }
+
+  void _onQueryChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () => _fetchSuggestions(value));
+  }
+
+  Future<void> _selectSuggestion(GeoSuggestion suggestion) async {
+    setState(() {
+      _tempPoint = suggestion.point;
+      _tempAddress = suggestion.address;
+      _suggestions.clear();
+    });
+    await context.read<AppState>().setDeliveryPointFromMap(suggestion.point);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _pickOnMap(LatLng point) async {
+    await context.read<AppState>().setDeliveryPointFromMap(point);
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final store = context.read<AppState>().selectedStore;
+    final start = store != null ? LatLng(store.latitude, store.longitude) : AppState.fallbackClient;
+    final center = _tempPoint ?? AppState.fallbackClient;
+
+    return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Select delivery address',
+                      style: GoogleFonts.sora(fontSize: 16, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                decoration: InputDecoration(
+                  hintText: 'Search address',
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: _isLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                        )
+                      : null,
+                ),
+                onChanged: _onQueryChanged,
+                textInputAction: TextInputAction.search,
+                onSubmitted: _fetchSuggestions,
+              ),
+            ),
+            if (_suggestions.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 220),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _suggestions.length,
+                    separatorBuilder: (_, __) => Divider(height: 1, color: theme.colorScheme.primary.withOpacity(0.1)),
+                    itemBuilder: (context, index) {
+                      final suggestion = _suggestions[index];
+                      return ListTile(
+                        dense: true,
+                        title: Text(
+                          suggestion.address,
+                          style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        onTap: () => _selectSuggestion(suggestion),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                child: Stack(
+                  children: [
+                    FlutterMap(
+                      key: ValueKey('picker-map-${context.watch<AppState>().mapTick}'),
+                      options: MapOptions(
+                        initialCenter: center,
+                        initialZoom: 13,
+                        onTap: (_, point) => _pickOnMap(point),
+                        interactionOptions:
+                            const InteractionOptions(flags: InteractiveFlag.pinchZoom | InteractiveFlag.drag),
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          tileProvider: CancellableNetworkTileProvider(),
+                          retinaMode: true,
+                          userAgentPackageName: 'com.droneapp.demo',
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: center,
+                              child: _PinMarker(icon: Icons.location_on, color: theme.colorScheme.secondary),
+                            ),
+                            Marker(
+                              point: start,
+                              child: _PinMarker(icon: Icons.storefront, color: theme.colorScheme.primary),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    Positioned(
+                      right: 10,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surface.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: theme.colorScheme.primary.withOpacity(0.1)),
+                        ),
+                        child: Text(
+                          '© OpenStreetMap contributors',
+                          style: GoogleFonts.sora(fontSize: 10, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ),
+                    if (_tempAddress != null)
+                      Positioned(
+                        left: 16,
+                        right: 16,
+                        bottom: 16,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surface.withOpacity(0.95),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: theme.colorScheme.primary.withOpacity(0.15)),
+                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 12)],
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(Icons.place_outlined, size: 16, color: theme.colorScheme.primary),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  _tempAddress!,
+                                  style: GoogleFonts.sora(fontSize: 12, fontWeight: FontWeight.w600),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('Done'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
