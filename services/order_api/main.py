@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import sqlite3
@@ -26,6 +26,7 @@ JWT_AUDIENCE = os.getenv("JWT_AUDIENCE", "droneapp-clients")
 ACCESS_TTL_SECONDS = int(os.getenv("ACCESS_TTL_SECONDS", "900"))
 REFRESH_TTL_SECONDS = int(os.getenv("REFRESH_TTL_SECONDS", "2592000"))
 CORS_ALLOW_ORIGINS = os.getenv("CORS_ALLOW_ORIGINS", "*")
+CLIENT_API_KEY = os.getenv("CLIENT_API_KEY", "demo-client-key")
 
 IMAGE_URLS = [
     "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=60",
@@ -82,6 +83,10 @@ class RefreshIn(BaseModel):
 
 
 class RefreshOut(BaseModel):
+    access_token: str
+
+
+class GuestTokenOut(BaseModel):
     access_token: str
 
 
@@ -242,12 +247,12 @@ def _load_public_key() -> str:
     return _read_key_value(JWT_PUBLIC_KEY, JWT_PUBLIC_KEY_PATH, "JWT_PUBLIC_KEY")
 
 
-def _issue_access_token(delivery_id: str, role: str, scopes: list[str]) -> str:
+def _issue_access_token(subject: str, role: str, scopes: list[str]) -> str:
     now = int(time.time())
     payload = {
         "iss": JWT_ISSUER,
         "aud": JWT_AUDIENCE,
-        "sub": delivery_id,
+        "sub": subject,
         "role": role,
         "scopes": scopes,
         "type": "access",
@@ -295,6 +300,37 @@ def _decode_token(token: str) -> dict:
     )
 
 
+def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
+    if not authorization:
+        return None
+    prefix = "bearer "
+    if authorization.lower().startswith(prefix):
+        return authorization[len(prefix):].strip()
+    return None
+
+
+def require_auth(
+    authorization: Optional[str],
+    roles: Optional[list[str]] = None,
+    scopes: Optional[list[str]] = None,
+) -> dict:
+    token = _extract_bearer(authorization)
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing bearer token")
+    try:
+        claims = _decode_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    if roles and claims.get("role") not in roles:
+        raise HTTPException(status_code=403, detail="Insufficient role")
+    if scopes:
+        token_scopes = set(claims.get("scopes", []))
+        if not set(scopes).issubset(token_scopes):
+            raise HTTPException(status_code=403, detail="Missing scope")
+    return claims
+
+
 def _start_simulation(payload: dict) -> None:
     data = json.dumps(payload).encode("utf-8")
     token = _issue_access_token(payload["delivery_id"], "operator", ["simulator:start"])
@@ -321,8 +357,20 @@ def _cancel_simulation(delivery_id: str) -> None:
         resp.read()
 
 
+@app.post("/auth/guest", response_model=GuestTokenOut)
+def issue_guest_token(x_client_key: Optional[str] = Header(default=None, alias="X-Client-Key")):
+    if not CLIENT_API_KEY or x_client_key != CLIENT_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid client key")
+    guest_sub = f"guest:{uuid.uuid4().hex}"
+    access_token = _issue_access_token(guest_sub, "customer", ["deliveries:create"])
+    return GuestTokenOut(access_token=access_token)
+
+
 @app.post("/deliveries", response_model=DeliveryCreateOut)
-def create_delivery(payload: DeliveryCreateIn):
+def create_delivery(
+    payload: DeliveryCreateIn,
+    claims: dict = Depends(lambda authorization=Header(default=None): require_auth(authorization, scopes=["deliveries:create"])),
+):
     delivery_id = f"DLV-{uuid.uuid4().hex[:10]}"
     conn = get_conn()
     try:
@@ -357,7 +405,7 @@ def create_delivery(payload: DeliveryCreateIn):
         }
     )
 
-    access_token = _issue_access_token(delivery_id, "customer", ["tracking:read"])
+    access_token = _issue_access_token(delivery_id, "customer", ["tracking:read", "deliveries:cancel"])
     refresh_token = _issue_refresh_token(delivery_id)
     return DeliveryCreateOut(
         delivery_id=delivery_id,
@@ -367,7 +415,12 @@ def create_delivery(payload: DeliveryCreateIn):
 
 
 @app.post("/deliveries/{delivery_id}/cancel", response_model=DeliveryStatusOut)
-def cancel_delivery(delivery_id: str):
+def cancel_delivery(
+    delivery_id: str,
+    claims: dict = Depends(lambda authorization=Header(default=None): require_auth(authorization, scopes=["deliveries:cancel"])),
+):
+    if claims.get("sub") != delivery_id:
+        raise HTTPException(status_code=403, detail="Invalid delivery scope")
     conn = get_conn()
     try:
         cur = conn.cursor()

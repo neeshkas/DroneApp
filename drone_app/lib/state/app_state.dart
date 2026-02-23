@@ -14,6 +14,7 @@ import '../utils/ws_client.dart';
 
 class AppState extends ChangeNotifier {
   // Mock backend URL
+  static const String _clientKey = String.fromEnvironment('CLIENT_KEY', defaultValue: 'demo-client-key');
   static String _normalizeWebHost(String host) {
     if (host.isEmpty || host == 'localhost' || host == '::1') {
       return '127.0.0.1';
@@ -64,6 +65,7 @@ class AppState extends ChangeNotifier {
   String? deliveryId;
   String? trackingAccessToken;
   String? trackingRefreshToken;
+  String? customerAccessToken;
   String? deliveryCode;
 
   // Delivery
@@ -264,6 +266,7 @@ class AppState extends ChangeNotifier {
     deliveryId = null;
     trackingAccessToken = null;
     trackingRefreshToken = null;
+    customerAccessToken = null;
     deliveryCode = null;
     isDelivered = false;
     isCancelled = false;
@@ -277,9 +280,18 @@ class AppState extends ChangeNotifier {
     final start = selectedStore != null ? LatLng(selectedStore!.latitude, selectedStore!.longitude) : fallbackClient;
     final end = deliveryPoint;
     try {
+      final authed = await _ensureCustomerToken();
+      if (!authed) {
+        statusLabel = 'Auth failed';
+        notifyListeners();
+        return;
+      }
       final response = await http.post(
         Uri.parse('$_orderApiBaseUrl/deliveries'),
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+          'Content-Type': 'application/json',
+          if (customerAccessToken != null) 'Authorization': 'Bearer $customerAccessToken',
+        },
         body: json.encode({
           'store_id': selectedStore!.id,
           'start_lat': start.latitude,
@@ -288,15 +300,47 @@ class AppState extends ChangeNotifier {
           'end_lng': end.longitude,
         }),
       );
-      if (response.statusCode != 200 && response.statusCode != 201) {
+      if (response.statusCode == 401) {
+        customerAccessToken = null;
+        final retried = await _ensureCustomerToken();
+        if (!retried) {
+          statusLabel = 'Auth failed';
+          notifyListeners();
+          return;
+        }
+        final retryResponse = await http.post(
+          Uri.parse('$_orderApiBaseUrl/deliveries'),
+          headers: {
+            'Content-Type': 'application/json',
+            if (customerAccessToken != null) 'Authorization': 'Bearer $customerAccessToken',
+          },
+          body: json.encode({
+            'store_id': selectedStore!.id,
+            'start_lat': start.latitude,
+            'start_lng': start.longitude,
+            'end_lat': end.latitude,
+            'end_lng': end.longitude,
+          }),
+        );
+        if (retryResponse.statusCode != 200 && retryResponse.statusCode != 201) {
+          statusLabel = 'Failed to create delivery';
+          notifyListeners();
+          return;
+        }
+        final data = json.decode(utf8.decode(retryResponse.bodyBytes));
+        deliveryId = data['delivery_id'] as String?;
+        trackingAccessToken = data['tracking_access_token'] as String?;
+        trackingRefreshToken = data['tracking_refresh_token'] as String?;
+      } else if (response.statusCode != 200 && response.statusCode != 201) {
         statusLabel = 'Failed to create delivery';
         notifyListeners();
         return;
+      } else {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        deliveryId = data['delivery_id'] as String?;
+        trackingAccessToken = data['tracking_access_token'] as String?;
+        trackingRefreshToken = data['tracking_refresh_token'] as String?;
       }
-      final data = json.decode(utf8.decode(response.bodyBytes));
-      deliveryId = data['delivery_id'] as String?;
-      trackingAccessToken = data['tracking_access_token'] as String?;
-      trackingRefreshToken = data['tracking_refresh_token'] as String?;
       deliveryCode = _generatePickupCode();
       if (deliveryId == null || trackingAccessToken == null) {
         statusLabel = 'Invalid delivery response';
@@ -318,7 +362,12 @@ class AppState extends ChangeNotifier {
   Future<void> cancelDelivery() async {
     if (deliveryId == null) return;
     try {
-      await http.post(Uri.parse('$_orderApiBaseUrl/deliveries/$deliveryId/cancel'));
+      await http.post(
+        Uri.parse('$_orderApiBaseUrl/deliveries/$deliveryId/cancel'),
+        headers: {
+          if (trackingAccessToken != null) 'Authorization': 'Bearer $trackingAccessToken',
+        },
+      );
     } catch (e) {
       debugPrint('Cancel delivery error: $e');
     }
@@ -328,6 +377,7 @@ class AppState extends ChangeNotifier {
     deliveryId = null;
     trackingAccessToken = null;
     trackingRefreshToken = null;
+    customerAccessToken = null;
     deliveryCode = null;
     notifyListeners();
   }
@@ -423,6 +473,7 @@ class AppState extends ChangeNotifier {
         notifyListeners();
 
         if (delivered) {
+          cartItems.clear();
           _stopHttpTracking();
           _httpFallbackActive = false;
         }
@@ -488,6 +539,27 @@ class AppState extends ChangeNotifier {
       return trackingAccessToken != null;
     } catch (e) {
       debugPrint('Refresh token error: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _ensureCustomerToken() async {
+    if (customerAccessToken != null) return true;
+    if (_clientKey.isEmpty) return false;
+    try {
+      final response = await http.post(
+        Uri.parse('$_orderApiBaseUrl/auth/guest'),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Client-Key': _clientKey,
+        },
+      );
+      if (response.statusCode != 200) return false;
+      final data = json.decode(utf8.decode(response.bodyBytes));
+      customerAccessToken = data['access_token'] as String?;
+      return customerAccessToken != null;
+    } catch (e) {
+      debugPrint('Guest token error: $e');
       return false;
     }
   }

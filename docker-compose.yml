@@ -26,7 +26,8 @@ services:
       JWT_ISSUER: droneapp
       JWT_AUDIENCE: droneapp-clients
       SIMULATOR_URL: http://drone_simulator:8001
-      CORS_ALLOW_ORIGINS: "*"
+      CORS_ALLOW_ORIGINS: "http://127.0.0.1:18080,http://localhost:18080"
+      CLIENT_API_KEY: ${CLIENT_API_KEY:-demo-client-key}
     volumes:
       - jwt_keys:/keys:ro
 
@@ -40,7 +41,7 @@ services:
       JWT_PUBLIC_KEY_PATH: /keys/public.pem
       JWT_ISSUER: droneapp
       JWT_AUDIENCE: droneapp-clients
-      CORS_ALLOW_ORIGINS: "*"
+      CORS_ALLOW_ORIGINS: "http://127.0.0.1:18080,http://localhost:18080"
     volumes:
       - jwt_keys:/keys:ro
 
@@ -61,7 +62,10 @@ services:
       - jwt_keys:/keys:ro
 
   frontend:
-    build: ./drone_app
+    build:
+      context: ./drone_app
+      args:
+        CLIENT_KEY: ${CLIENT_API_KEY:-demo-client-key}
     depends_on:
       - order_api
       - tracking_service
