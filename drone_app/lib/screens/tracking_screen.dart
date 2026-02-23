@@ -165,10 +165,28 @@ class _StatusPanel extends StatelessWidget {
                     if (isDelivered)
                       _PickupCodeSection(code: context.read<AppState>().deliveryCode ?? '----')
                     else
-                      Text(
-                        'Your drone is en route. You will get a code when it lands.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8)),
+                      Column(
+                        children: [
+                          Text(
+                            'Your drone is en route. You will get a code when it lands.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.8)),
+                          ),
+                          const SizedBox(height: 10),
+                          SizedBox(
+                            width: double.infinity,
+                            child: OutlinedButton.icon(
+                              onPressed: () async {
+                                await context.read<AppState>().cancelDelivery();
+                                if (context.mounted) {
+                                  Navigator.of(context).pop();
+                                }
+                              },
+                              icon: const Icon(Icons.cancel_outlined, size: 18),
+                              label: const Text('Cancel delivery'),
+                            ),
+                          ),
+                        ],
                       ),
                   ],
                 ),

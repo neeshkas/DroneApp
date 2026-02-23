@@ -6,9 +6,25 @@ import '../models/product.dart';
 import '../models/store.dart';
 import '../state/app_state.dart';
 import 'cart_screen.dart';
+import 'tracking_screen.dart';
 
-class CatalogScreen extends StatelessWidget {
+class CatalogScreen extends StatefulWidget {
   const CatalogScreen({super.key});
+
+  @override
+  State<CatalogScreen> createState() => _CatalogScreenState();
+}
+
+class _CatalogScreenState extends State<CatalogScreen> {
+  void _openQuickList(BuildContext context, String title, String subtitle, List<Product> products) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (_) => _QuickListSheet(title: title, subtitle: subtitle, products: products),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +64,25 @@ class CatalogScreen extends StatelessWidget {
                 const SliverToBoxAdapter(child: SizedBox(height: 8)),
                 SliverToBoxAdapter(child: _HeroBanner(itemsInCart: itemsInCart)),
                 const SliverToBoxAdapter(child: SizedBox(height: 16)),
-                const SliverToBoxAdapter(child: _QuickActions()),
+                SliverToBoxAdapter(
+                  child: _QuickActions(
+                    onExpress: () {
+                      final store = appState.selectedStore ?? (stores.isNotEmpty ? stores.first : null);
+                      if (store == null) return;
+                      final products = appState.productsForStore(store.id).take(8).toList();
+                      _openQuickList(context, 'Express', 'Ready in 15-20 min', products);
+                    },
+                    onTopPicks: () {
+                      final all = stores.expand((s) => appState.productsForStore(s.id)).toList();
+                      _openQuickList(context, 'Top picks', 'Best sellers today', all.take(10).toList());
+                    },
+                    onDeals: () {
+                      final all = stores.expand((s) => appState.productsForStore(s.id)).toList();
+                      all.sort((a, b) => a.price.compareTo(b.price));
+                      _openQuickList(context, 'Deals', 'Lowest prices', all.take(10).toList());
+                    },
+                  ),
+                ),
                 const SliverToBoxAdapter(child: SizedBox(height: 18)),
                 const SliverToBoxAdapter(child: _SectionTitle(title: 'Nearby stores', subtitle: 'Hand-picked for fast flights')),
                 SliverPadding(
@@ -86,6 +120,15 @@ class CatalogScreen extends StatelessWidget {
                 ),
               ],
             ),
+      floatingActionButton: appState.deliveryId != null && !appState.isDelivered
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TrackingScreen()));
+              },
+              icon: const Icon(Icons.navigation_outlined),
+              label: const Text('Resume tracking'),
+            )
+          : null,
     );
   }
 }
@@ -231,38 +274,49 @@ class _Halo extends StatelessWidget {
 }
 
 class _QuickActions extends StatelessWidget {
-  const _QuickActions();
+  final VoidCallback onExpress;
+  final VoidCallback onTopPicks;
+  final VoidCallback onDeals;
+
+  const _QuickActions({
+    required this.onExpress,
+    required this.onTopPicks,
+    required this.onDeals,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Row(
-        children: const [
+        children: [
           Expanded(
             child: _ActionCard(
               icon: Icons.bolt_rounded,
               title: 'Express',
               subtitle: '15-20 min',
-              tone: Color(0xFF0B3C49),
+              tone: const Color(0xFF0B3C49),
+              onTap: onExpress,
             ),
           ),
-          SizedBox(width: 10),
+          const SizedBox(width: 10),
           Expanded(
             child: _ActionCard(
               icon: Icons.favorite_rounded,
               title: 'Top picks',
               subtitle: 'Best sellers',
-              tone: Color(0xFF7C2D12),
+              tone: const Color(0xFF7C2D12),
+              onTap: onTopPicks,
             ),
           ),
-          SizedBox(width: 10),
+          const SizedBox(width: 10),
           Expanded(
             child: _ActionCard(
               icon: Icons.wallet_rounded,
               title: 'Deals',
               subtitle: 'Save today',
-              tone: Color(0xFF0F766E),
+              tone: const Color(0xFF0F766E),
+              onTap: onDeals,
             ),
           ),
         ],
@@ -276,43 +330,129 @@ class _ActionCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color tone;
+  final VoidCallback onTap;
 
   const _ActionCard({
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.tone,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-      decoration: BoxDecoration(
-        color: tone.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: tone.withOpacity(0.2)),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        decoration: BoxDecoration(
+          color: tone.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: tone.withOpacity(0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(color: tone.withOpacity(0.2), shape: BoxShape.circle),
+              child: Icon(icon, size: 18, color: tone),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: GoogleFonts.sora(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: GoogleFonts.sora(fontSize: 11, color: Colors.black54),
+            ),
+          ],
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(color: tone.withOpacity(0.2), shape: BoxShape.circle),
-            child: Icon(icon, size: 18, color: tone),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            title,
-            style: GoogleFonts.sora(fontWeight: FontWeight.w700, fontSize: 13),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: GoogleFonts.sora(fontSize: 11, color: Colors.black54),
-          ),
-        ],
+    );
+  }
+}
+
+class _QuickListSheet extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final List<Product> products;
+
+  const _QuickListSheet({
+    required this.title,
+    required this.subtitle,
+    required this.products,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.onSurface.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: GoogleFonts.sora(fontSize: 18, fontWeight: FontWeight.w700)),
+                      Text(subtitle, style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.6))),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.of(context).pop(),
+                )
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (products.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text('No products yet.', style: theme.textTheme.bodySmall),
+              )
+            else
+              SizedBox(
+                height: 220,
+                child: ListView.separated(
+                  itemCount: products.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final product = products[index];
+                    return ListTile(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      tileColor: theme.colorScheme.surface,
+                      title: Text(product.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text('KZT ${product.price.toStringAsFixed(0)}'),
+                      trailing: FilledButton(
+                        onPressed: () => context.read<AppState>().addToCart(product),
+                        child: const Text('Add'),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -72,6 +72,11 @@ class DeliveryCreateOut(BaseModel):
     tracking_refresh_token: str
 
 
+class DeliveryStatusOut(BaseModel):
+    delivery_id: str
+    status: str
+
+
 class RefreshIn(BaseModel):
     refresh_token: str
 
@@ -156,8 +161,8 @@ def init_db() -> None:
         stores_rows = []
         products_rows = []
         for i in range(10):
-            base_lat = 43.235 + i * 0.002
-            base_lng = 76.88 + i * 0.003
+            base_lat = 43.2920278 + i * 0.002
+            base_lng = 77.001 + i * 0.003
             sid = f"s{i+1}"
             store_name = f"AeroMart {i+1}"
             stores_rows.append((sid, store_name, f"Kaskelen Ave {50+i}", base_lat, base_lng))
@@ -303,6 +308,19 @@ def _start_simulation(payload: dict) -> None:
         resp.read()
 
 
+def _cancel_simulation(delivery_id: str) -> None:
+    data = json.dumps({"delivery_id": delivery_id}).encode("utf-8")
+    token = _issue_access_token(delivery_id, "operator", ["simulator:cancel"])
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"}
+    req = Request(
+        f"{SIMULATOR_URL.rstrip('/')}/cancel",
+        data=data,
+        headers=headers,
+    )
+    with urlopen(req, timeout=5) as resp:
+        resp.read()
+
+
 @app.post("/deliveries", response_model=DeliveryCreateOut)
 def create_delivery(payload: DeliveryCreateIn):
     delivery_id = f"DLV-{uuid.uuid4().hex[:10]}"
@@ -346,6 +364,27 @@ def create_delivery(payload: DeliveryCreateIn):
         tracking_access_token=access_token,
         tracking_refresh_token=refresh_token,
     )
+
+
+@app.post("/deliveries/{delivery_id}/cancel", response_model=DeliveryStatusOut)
+def cancel_delivery(delivery_id: str):
+    conn = get_conn()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE deliveries SET status = ? WHERE delivery_id = ?",
+            ("CANCELLED", delivery_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    try:
+        _cancel_simulation(delivery_id)
+    except Exception:
+        pass
+
+    return DeliveryStatusOut(delivery_id=delivery_id, status="CANCELLED")
 
 
 @app.post("/auth/refresh", response_model=RefreshOut)

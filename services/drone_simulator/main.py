@@ -33,6 +33,10 @@ class StartRequest(BaseModel):
     update_interval_sec: float = 3.0
 
 
+class CancelRequest(BaseModel):
+    delivery_id: str
+
+
 def _read_key_value(value: str | None, path: str | None, env_name: str) -> str:
     if value:
         return value.replace("\\n", "\n")
@@ -174,6 +178,15 @@ async def start_simulation(req: StartRequest, _: dict = Depends(_require_simulat
     task = asyncio.create_task(_simulate_flight(req))
     active_flights[req.delivery_id] = task
     return {"status": "started", "delivery_id": req.delivery_id}
+
+
+@app.post("/cancel")
+async def cancel_simulation(req: CancelRequest, _: dict = Depends(_require_simulator_token)):
+    existing = active_flights.get(req.delivery_id)
+    if existing:
+        existing.cancel()
+        return {"status": "cancelled", "delivery_id": req.delivery_id}
+    return {"status": "not_found", "delivery_id": req.delivery_id}
 
 
 @app.get("/")

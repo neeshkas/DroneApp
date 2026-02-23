@@ -76,6 +76,7 @@ class AppState extends ChangeNotifier {
   String statusLabel = 'Waiting for dispatch';
   bool isDelivered = false;
   int mapTick = 0;
+  bool isCancelled = false;
 
   static final fallbackClient = LatLng(43.238949, 76.889709); // Almaty
 
@@ -265,6 +266,7 @@ class AppState extends ChangeNotifier {
     trackingRefreshToken = null;
     deliveryCode = null;
     isDelivered = false;
+    isCancelled = false;
     statusLabel = 'Preparing drone and loading payload...';
 
     _createDelivery(useBackendTracking: useBackendTracking);
@@ -310,6 +312,23 @@ class AppState extends ChangeNotifier {
       statusLabel = 'Failed to create delivery';
       debugPrint('Create delivery error: $e');
     }
+    notifyListeners();
+  }
+
+  Future<void> cancelDelivery() async {
+    if (deliveryId == null) return;
+    try {
+      await http.post(Uri.parse('$_orderApiBaseUrl/deliveries/$deliveryId/cancel'));
+    } catch (e) {
+      debugPrint('Cancel delivery error: $e');
+    }
+    _stopTracking();
+    isCancelled = true;
+    statusLabel = 'Cancelled';
+    deliveryId = null;
+    trackingAccessToken = null;
+    trackingRefreshToken = null;
+    deliveryCode = null;
     notifyListeners();
   }
 
@@ -421,6 +440,13 @@ class AppState extends ChangeNotifier {
     _httpTrackingTimer = null;
   }
 
+  void _stopTracking() {
+    _subscription?.cancel();
+    _ws?.close();
+    _stopHttpTracking();
+    _httpFallbackActive = false;
+  }
+
   void _handleWebSocketMessage(dynamic message) {
     try {
       if (message is String) {
@@ -433,10 +459,8 @@ class AppState extends ChangeNotifier {
 
           if (isDelivered) {
             statusLabel = 'Delivered';
-            _subscription?.cancel();
-            _ws?.close();
-            _stopHttpTracking();
-            _httpFallbackActive = false;
+            _stopTracking();
+            cartItems.clear();
           }
 
           notifyListeners();
